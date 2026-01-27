@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: veda_ped_analyzer
+message: >
+  If you use this software in your research, please cite it using the information below.
+type: software
+authors:
+  - family-names: Yamamoto
+    given-names: Kaoru
+version: 1.0.1
+date-released: 2026-01-27
+license: MIT
+repository-code: https://github.com/your-username/veda_ped_analyzer

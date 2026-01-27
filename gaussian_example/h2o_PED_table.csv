@@ -1,0 +1,4 @@
+﻿mode_veda,mode_orca,freq_veda,freq_orca,delta_freq,abs_delta_freq,irrep,IR_intensity,ped_sum,note,caution,PED1_col,PED1_coord_id,PED1_coord_code,PED1_label,PED1_val,PED2_col,PED2_coord_id,PED2_coord_code,PED2_label,PED2_val
+1,3,3891.97,3893.1961,1.226100000000315,1.226100000000315,B2,28.4667,100.0,,,1,1,s,str(O-H)[OH],50.0,2.0,2.0,s,str(O-H)[OH],50.0
+2,2,3793.29,3793.261,-0.028999999999996362,0.028999999999996362,A1,4.9435,100.0,,,1,1,s,str(O-H)[OH],50.0,2.0,2.0,s,str(O-H)[OH],50.0
+3,1,1631.04,1631.0329,-0.007100000000036744,0.007100000000036744,A1,56.4993,100.0,,,3,3,s,bend(H-O-H)[HOH],100.0,,,,,

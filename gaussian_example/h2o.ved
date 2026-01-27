@@ -1,0 +1,21 @@
+"****veda**** version 4.99e    c:\gaussian_work\h2o\h2o_b3lyp_gen_def2.ved"
+F matrix & atom's orientation: C:\gaussian_work\h2o\h2o_b3lyp_gen_def2.fmu
+diagonality factor = 54.38   <EPm> = 66.65
+
+  3891.97  3793.29  1631.04
+
+PED: sign = direction,  column = coordinate,  row = No. of mode
+       1   2   3
+   1 -50  50   0   1 
+   2 -50 -50   0   2 
+   3   0   0 100   3 
+       1   2   3
+
+TED:    sum = 100,   column = coordinate,  row = No. of mode
+       1   2   3
+   1  50  50   0   1 
+   2  50  50   0   2 
+   3   0   0 100   3 
+       1   2   3
+
+TED Above 100 Factor TAF=0.000
