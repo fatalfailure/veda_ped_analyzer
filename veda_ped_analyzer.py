@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-veda_ped_analyzer (public release v17)
+veda_ped_analyzer (public release v1.1.0 - Target Coordinate Tracking)
 
 Purpose
 - Combine the PED (Potential Energy Distribution) matrix from a VEDA .ved file with
@@ -10,19 +10,13 @@ Purpose
   for each vibrational mode to CSV.
 - Parse an QC output file (required) to obtain ORCA frequencies / irreps / IR intensities and
   map ORCA modes to VEDA modes using a frequency-based 1:1 ordered alignment.
+- Support multi-interpretation export (STANDARD 's', ALTERNATIVE 'k', ALTERNATIVE2 'v') 
+  to fully ensure alternative coordinate sets are captured and accurately labeled.
+- Add coordinate-centered target tracking for metal-ligand stretches and other selected internal coordinates.
+- Export long PED tables, target hits, target summaries by mode/coordinate, and target matrices.
 
-Robustness notes (v9 changes)
-- VEDA frequency extraction is stricter and section-aware (avoids "random numbers" in headers).
-- PED-column ↔ dd2 mapping uses VEDA's own column IDs (when present in the PED header rows),
-  so we do NOT assume "matrix column position == dd2 coord_id".
-- Log/config writing no longer fails silently: if the primary path is not writable, the program
-  automatically falls back to alternate locations and reports failures.
-- Auto-fill "not found" messages are INFO-level (not CAUTION) to reduce log noise.
-
-GUI features
-- Selecting a .ved file auto-fills same-stem .dd2/.fmu/.out files in the same folder (if present).
-- File selections are saved to JSON and restored on the next launch.
-- Two-tab UI: Analysis / User Guide.
+Repository
+- https://github.com/fatalfailure/veda_ped_analyzer
 """
 
 from __future__ import annotations
@@ -50,11 +44,14 @@ from tkinter import ttk
 # ------------------------------------------------------------
 
 APP_NAME = "veda_ped_analyzer"
+APP_VERSION = "1.1.0"
+APP_RELEASE_DATE = "2026-06-19"
+APP_REPOSITORY = "https://github.com/fatalfailure/veda_ped_analyzer"
+APP_VERSION_LABEL = f"{APP_NAME} v{APP_VERSION}"
 
 try:
     BASE_PATH = Path(__file__).resolve()
 except Exception:
-    # Extremely defensive fallback (should not happen in normal use)
     BASE_PATH = Path.cwd() / APP_NAME
 
 LOG_PATHS = [
@@ -66,15 +63,11 @@ CONFIG_PATHS = [
     Path.home() / f"{APP_NAME}.json",
 ]
 
-# Selected paths (will be set lazily, and can change if a fallback is needed).
 LOG_PATH: Optional[Path] = None
 CONFIG_PATH: Optional[Path] = None
 
 
 def _first_writable_path(candidates: List[Path], default_name: str) -> Path:
-    """
-    Choose the first path that can be opened for append.
-    """
     for p in candidates:
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
@@ -94,12 +87,7 @@ def _ensure_log_path() -> Path:
 
 
 def _write_log_text(text: str) -> None:
-    """
-    Write to the log file. If the current LOG_PATH is unwritable, automatically fall back to
-    other candidates. Never fail silently.
-    """
     global LOG_PATH
-    # Prefer current LOG_PATH first, then other candidates.
     candidates: List[Path] = []
     if LOG_PATH is not None:
         candidates.append(LOG_PATH)
@@ -119,14 +107,12 @@ def _write_log_text(text: str) -> None:
             last_exc = e
             continue
 
-    # Final fallback: stderr (in .pyw the user may not see it, but it's still not silent)
     print(f"[{APP_NAME}] LOG WRITE FAILED: {last_exc}", file=sys.stderr)
 
 
 def log_message(msg: str) -> None:
     ts = datetime.datetime.now().isoformat(timespec="seconds")
     line = f"[{ts}] {msg}\n"
-    # Console print is useful when run as .py; harmless otherwise.
     print(line.rstrip("\n"))
     _ensure_log_path()
     _write_log_text(line)
@@ -151,7 +137,6 @@ def log_error(context: str, exc: Exception) -> None:
 
 
 def load_config() -> dict:
-    """Load the settings JSON from the first existing candidate path."""
     global CONFIG_PATH
     for p in CONFIG_PATHS:
         if not p.is_file():
@@ -168,10 +153,6 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
-    """
-    Save settings JSON. If the primary path is not writable, fall back to alternate locations.
-    Never fail silently.
-    """
     global CONFIG_PATH
     payload = json.dumps(cfg, ensure_ascii=False, indent=2)
 
@@ -198,15 +179,10 @@ def save_config(cfg: dict) -> None:
 
 
 # ------------------------------------------------------------
-# Numeric parsing (tolerant of formatting variations)
+# Numeric parsing
 # ------------------------------------------------------------
 
 def safe_float(x) -> float:
-    """
-    A bit more robust than float():
-    - Treat Fortran 'D' exponent as 'E'
-    - Lightly strip surrounding commas/semicolons/brackets
-    """
     if x is None:
         raise ValueError("safe_float(None)")
     if isinstance(x, (int, float)):
@@ -237,7 +213,6 @@ Z_TO_EL = {
 
 
 def parse_atom_map_from_fmu(text_or_path: str) -> Dict[int, str]:
-    """Build atomic-index → element-symbol map from an .fmu file."""
     try:
         if os.path.isfile(str(text_or_path)):
             text = Path(text_or_path).read_text(encoding="utf-8", errors="replace")
@@ -252,7 +227,6 @@ def parse_atom_map_from_fmu(text_or_path: str) -> Dict[int, str]:
     if not lines:
         return {}
 
-    # Format (1): simple format (first token is atom count)
     if re.fullmatch(r"\d+", lines[0]):
         try:
             n = int(lines[0])
@@ -270,7 +244,6 @@ def parse_atom_map_from_fmu(text_or_path: str) -> Dict[int, str]:
                 atom_map[i] = Z_TO_EL.get(z, f"Z{z}")
             return atom_map
 
-    # Format (2): "Atomic numbers" block format
     atom_map: Dict[int, str] = {}
     in_atomic = False
     idx = 1
@@ -279,7 +252,6 @@ def parse_atom_map_from_fmu(text_or_path: str) -> Dict[int, str]:
             in_atomic = True
             continue
         if in_atomic:
-            # Stop when the next section begins
             if re.match(r"^[A-Za-z].*:", ln) and not re.search(r"Atomic numbers", ln, re.IGNORECASE):
                 break
             for tok in ln.split():
@@ -290,18 +262,7 @@ def parse_atom_map_from_fmu(text_or_path: str) -> Dict[int, str]:
     return atom_map
 
 
-
-
 def parse_atom_map_from_orca_out(out_text: str) -> Dict[int, str]:
-    """
-    Build atomic-index → element-symbol map from an QC output file.
-
-    We read the first "CARTESIAN COORDINATES (ANGSTROEM)" block (preferred),
-    falling back to "CARTESIAN COORDINATES (A.U.)" if needed.
-
-    Returns:
-        {1: "C", 2: "H", ...} (1-based indices, as used by VEDA .dd2 atom lists)
-    """
     if not out_text:
         return {}
 
@@ -337,15 +298,10 @@ def parse_atom_map_from_orca_out(out_text: str) -> Dict[int, str]:
     return _scan_block("CARTESIAN COORDINATES (A.U.)")
 
 
-
-
-
 # ------------------------------------------------------------
 # Gaussian (.out/.log) parser (Freq job)
 # ------------------------------------------------------------
 
-# Minimal periodic table (atomic number -> symbol) for labeling.
-# (Extend if you expect elements beyond this range.)
 _PERIODIC_TABLE = {
     1: "H", 2: "He", 3: "Li", 4: "Be", 5: "B", 6: "C", 7: "N", 8: "O", 9: "F", 10: "Ne",
     11: "Na", 12: "Mg", 13: "Al", 14: "Si", 15: "P", 16: "S", 17: "Cl", 18: "Ar",
@@ -362,36 +318,22 @@ _PERIODIC_TABLE = {
 
 
 def is_gaussian_output(out_text: str) -> bool:
-    """Heuristic detection for Gaussian outputs."""
     if not out_text:
         return False
     head = out_text[:6000]
-    # Common markers
     if "Entering Gaussian System" in head:
         return True
     if "Gaussian, Inc." in head:
         return True
-    # Some outputs omit banner; still, Normal termination is distinctive.
     if "Normal termination of Gaussian" in out_text:
         return True
     return False
 
 
 def parse_atom_map_from_gaussian_out(out_text: str) -> Dict[int, str]:
-    """
-    Build atomic-index -> element-symbol map from Gaussian geometry tables.
-
-    Preference:
-      Standard orientation
-    Fallback:
-      Input orientation
-
-    Returns {1:"C",2:"H",...} (1-based).
-    """
     if not out_text:
         return {}
 
-    # Find last occurrence (final geometry is typically the last table)
     starts = [m.start() for m in re.finditer(r"\n\s*Standard orientation:\s*\n", out_text)]
     if not starts:
         starts = [m.start() for m in re.finditer(r"\n\s*Input orientation:\s*\n", out_text)]
@@ -401,7 +343,6 @@ def parse_atom_map_from_gaussian_out(out_text: str) -> Dict[int, str]:
     chunk = out_text[starts[-1]:]
     lines = chunk.splitlines()
 
-    # Table is delimited by dashed lines.
     dash = [i for i, ln in enumerate(lines[:200]) if re.match(r"\s*-{5,}\s*$", ln)]
     if len(dash) < 2:
         return {}
@@ -411,8 +352,6 @@ def parse_atom_map_from_gaussian_out(out_text: str) -> Dict[int, str]:
     for ln in lines[i0:]:
         if re.match(r"\s*-{5,}\s*$", ln):
             break
-        # Center  Atomic  Atomic              Coordinates (Angstroms)
-        # Number  Number   Type              X           Y           Z
         m = re.match(
             r"\s*(\d+)\s+(\d+)\s+(\d+)\s+([-0-9.]+)\s+([-0-9.]+)\s+([-0-9.]+)",
             ln,
@@ -426,24 +365,12 @@ def parse_atom_map_from_gaussian_out(out_text: str) -> Dict[int, str]:
 
 
 def parse_gaussian_out_data(out_text: str) -> Tuple[Dict[int, dict], Dict[int, float]]:
-    """
-    Parse from a Gaussian .out/.log file:
-    - Frequencies (mode -> freq, irrep) from repeated blocks containing "Frequencies --"
-    - IR intensities (mode -> IR Inten) from the corresponding "IR Inten --" line
-
-    Gaussian prints 3 modes per block. We assemble mode-indexed dicts.
-
-    Note:
-    - Gaussian logs may contain multiple frequency jobs (Link1, restarts).
-      We select the last coherent run (mode numbering that increases, with resets starting a new run).
-    """
     lines = out_text.splitlines()
 
-    blocks = []  # list of (modes, irreps, freqs, intens)
+    blocks = []
     i = 0
     while i < len(lines):
         if "Frequencies --" in lines[i]:
-            # Search backward for the mode-number line (e.g., "  1  2  3")
             mode_line = None
             irrep_line = ""
             for back in range(1, 8):
@@ -454,7 +381,6 @@ def parse_gaussian_out_data(out_text: str) -> Tuple[Dict[int, dict], Dict[int, f
                     irrep_line = lines[i - back + 1] if (i - back + 1) < len(lines) else ""
                     break
 
-            # Search forward for IR Inten line
             inten_line = None
             for fwd in range(1, 12):
                 if i + fwd >= len(lines):
@@ -492,7 +418,6 @@ def parse_gaussian_out_data(out_text: str) -> Tuple[Dict[int, dict], Dict[int, f
     if not blocks:
         return {}, {}
 
-    # Split into "runs" by mode reset/backwards.
     runs = []
     current = []
     last_mode = 0
@@ -506,14 +431,13 @@ def parse_gaussian_out_data(out_text: str) -> Tuple[Dict[int, dict], Dict[int, f
     if current:
         runs.append(current)
 
-    # Choose run that reaches highest mode number; tie-break: last.
     best = max(runs, key=lambda r: (r[-1][0][-1], runs.index(r)))
 
     freq_data: Dict[int, dict] = {}
     intensities: Dict[int, float] = {}
     for modes, irreps, freqs, intens in best:
         for m, ir, fr, it in zip(modes, irreps, freqs, intens):
-            if fr == fr:  # not NaN
+            if fr == fr:
                 freq_data[m] = {"freq": float(fr), "irrep": (ir or "").strip()}
             if it == it:
                 intensities[m] = float(it)
@@ -522,30 +446,21 @@ def parse_gaussian_out_data(out_text: str) -> Tuple[Dict[int, dict], Dict[int, f
 
 
 def parse_qchem_output(out_text: str) -> Tuple[str, Dict[int, dict], Dict[int, float], Dict[int, str]]:
-    """
-    Unified parser for quantum-chemistry vibrational outputs.
-
-    Returns:
-        engine, freq_data, intensities, atom_map
-
-    engine: "ORCA" or "Gaussian"
-    """
     if is_gaussian_output(out_text):
         freq_data, intensities = parse_gaussian_out_data(out_text)
         atom_map = parse_atom_map_from_gaussian_out(out_text)
         return "Gaussian", freq_data, intensities, atom_map
 
-    # Default: ORCA
     freq_data, intensities = parse_orca_out_data(out_text)
     atom_map = parse_atom_map_from_orca_out(out_text)
     return "ORCA", freq_data, intensities, atom_map
+
 
 # ------------------------------------------------------------
 # DD2 parser and lookup CSV export
 # ------------------------------------------------------------
 
 def parse_dd2(dd2_path: str) -> dict:
-    """Parse a VEDA .dd2 file."""
     try:
         text = Path(dd2_path).read_text(encoding="utf-8", errors="replace")
     except Exception as e:
@@ -554,9 +469,7 @@ def parse_dd2(dd2_path: str) -> dict:
         return {"coords": []}
 
     lines = [ln.rstrip("\n") for ln in text.splitlines()]
-
     coord_rows: List[dict] = []
-    # Example: "s 1 1.0 STRE  3  8  ... "
     table_re = re.compile(
         r"^\s*([A-Za-z])\s+(\d+)\s+([+-]?\d+(?:\.\d+)?(?:[EeDd][+-]?\d+)?)\s+([A-Za-z0-9_]+)\s+(.*)$"
     )
@@ -567,7 +480,6 @@ def parse_dd2(dd2_path: str) -> dict:
             continue
 
         code = m.group(1)
-
         try:
             coord_id = int(m.group(2))
         except Exception as e:
@@ -636,20 +548,12 @@ def parse_dd2(dd2_path: str) -> dict:
 
 
 def export_internal_coordinate_lookup_csv(dd2_path: str, out_csv_path: str, fmu_path: Optional[str] = None, atom_map: Optional[Dict[int, str]] = None) -> None:
-    """
-    Export an internal-coordinate lookup CSV.
-
-    - If FMU is provided and readable, it is used for element labeling.
-    - Otherwise, the caller may pass atom_map from QC output (ORCA/Gaussian).
-    - If neither is available, the CSV is still generated but element labels may degrade.
-    """
     try:
         dd2 = parse_dd2(dd2_path)
         coords = dd2.get("coords", []) or []
         if not coords:
             raise ValueError("dd2 coords empty")
 
-        # Build atom map
         amap: Dict[int, str] = {}
         if atom_map:
             try:
@@ -677,7 +581,6 @@ def export_internal_coordinate_lookup_csv(dd2_path: str, out_csv_path: str, fmu_
             atom_label = "-".join(atom_desc(a) for a in atoms) if atoms else ""
             group_u = (group or "").upper()
 
-            # Human-friendly short description
             if group_u.startswith("STRE") and len(atoms) == 2:
                 desc = f"str({atom_label})"
             elif group_u.startswith("BEND") and len(atoms) == 3:
@@ -690,7 +593,6 @@ def export_internal_coordinate_lookup_csv(dd2_path: str, out_csv_path: str, fmu_
             if raw:
                 desc += f"[{raw}]"
 
-            # The dd2 parser may include an optional map of mode contributions (already summarized)
             top_terms = c.get("top_mode_terms", "")
 
             rows.append({
@@ -709,26 +611,15 @@ def export_internal_coordinate_lookup_csv(dd2_path: str, out_csv_path: str, fmu_
         log_message(f"Saved coordinate lookup CSV: {out_csv_path}")
 
     except Exception as e:
-        log_error(f"Failed to export coordinate lookup CSV: {e}")
+        log_error("export_internal_coordinate_lookup_csv", e)
         raise
 
 
-
 # ------------------------------------------------------------
-# ORCA .out parser (tolerant of formatting variations)
+# ORCA .out parser (Fixed Regex Patterns)
 # ------------------------------------------------------------
 
 def parse_orca_out_data(out_text: str):
-    """
-    Parse from an QC output file:
-    - Frequencies (mode -> freq, irrep) from the "VIBRATIONAL FREQUENCIES" table
-    - IR intensities (mode -> Int[km/mol]) from the "IR SPECTRUM" table
-
-    Notes:
-    - ORCA mode indices typically include translational/rotational near-zero modes.
-      The IR table usually starts at the first vibrational mode (often 6, but not always).
-      Downstream mapping uses the IR-start index when available.
-    """
     lines = out_text.splitlines()
     n_lines = len(lines)
 
@@ -739,8 +630,6 @@ def parse_orca_out_data(out_text: str):
         r"^\s*(\d+)\s*:\s*([+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?)\s+cm(?:\*\*)?-1(?:\s+(.*))?$",
         re.IGNORECASE
     )
-
-    # Captures: mode, freq, eps, Int (km/mol)
     re_ir_line = re.compile(
         r"^\s*(\d+)\s*:\s*([+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?)\s+"
         r"([+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?)\s+"
@@ -796,7 +685,6 @@ def parse_orca_out_data(out_text: str):
     return freq_data, intensities
 
 
-
 # ------------------------------------------------------------
 # VEDA (.ved) parser
 # ------------------------------------------------------------
@@ -804,10 +692,6 @@ def parse_orca_out_data(out_text: str):
 _INT_RE = re.compile(r"^\d+$")
 
 def _is_plausible_ved_header_ints(ints: List[int]) -> bool:
-    """Heuristic to distinguish VEDA header rows from data rows.
-    True for sequences like: 1 2 3 ... or 17 18 19 ... (strictly increasing, positive, mostly step=1).
-    False for data rows like: 1 50 50 0 ... (not increasing).
-    """
     if not ints or len(ints) < 2:
         return False
     if min(ints) <= 0:
@@ -820,31 +704,21 @@ def _is_plausible_ved_header_ints(ints: List[int]) -> bool:
     return n1 >= max(1, int(0.6 * len(steps)))
 
 
-
-def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, List[List[float]], List[int]]:
-    """
-    Parse a VEDA matrix block (.ved), joining stitched sub-blocks if needed.
-
-    Returns:
-        n_modes, n_cols, matrix, col_ids
-
-    col_ids:
-        - If the VEDA block contains header rows listing column IDs, those are used.
-        - If no column headers are found, col_ids is [1..n_cols] (legacy behavior).
-    """
+def parse_ved_matrix_stitched(lines: List[str], label: str, start_from_idx: int = 0) -> Tuple[int, int, List[List[float]], List[int], int, str]:
     lab = label.strip().upper()
     start_idx = None
-    for i, ln in enumerate(lines):
-        s = ln.strip()
+    matched_header = ""
+    for i in range(start_from_idx, len(lines)):
+        s = lines[i].strip()
         if not s:
             continue
         if re.match(rf"^{re.escape(lab)}\s*:?", s, flags=re.IGNORECASE):
             start_idx = i
+            matched_header = s
             break
     if start_idx is None:
         raise ValueError(f"{label} header not found")
 
-    # If headers are found, we build by column-ID (safer than assuming sequential columns).
     has_headers = False
     current_cols: List[int] = []
     col_ids_order: List[int] = []
@@ -860,17 +734,19 @@ def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, L
             i += 1
             continue
 
-        # End at the next block header
         if s.upper().startswith("PED:") and lab != "PED":
             break
         if s.upper().startswith("TED:") and lab != "TED":
+            break
+        if lab == "PED" and re.match(r"^PED\s*:", s, flags=re.IGNORECASE) and i > start_idx + 1:
+            break
+        if lab == "TED" and re.match(r"^TED\s*:", s, flags=re.IGNORECASE) and i > start_idx + 1:
             break
         if re.match(r"^-+\s*$", s) and (mode_to_colvals or mode_to_listvals):
             break
 
         toks = s.split()
 
-        # Header row: column indices like 1 2 3 ... (but avoid misclassifying integer-only data rows)
         if toks and all(_INT_RE.fullmatch(t) for t in toks):
             try:
                 int_toks = [int(t) for t in toks]
@@ -891,7 +767,6 @@ def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, L
                 i += 1
                 continue
 
-        # Data row: leading mode index
         if toks and toks[0].lstrip("+-").isdigit():
             try:
                 mode = int(toks[0])
@@ -904,10 +779,8 @@ def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, L
                 try:
                     vals.append(safe_float(t))
                 except Exception:
-                    # ignore stray tokens
                     continue
 
-            # VEDA quirk: sometimes the last numeric token repeats the mode index
             if vals and float(vals[-1]).is_integer() and int(vals[-1]) == mode:
                 vals = vals[:-1]
 
@@ -922,15 +795,11 @@ def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, L
                     continue
                 n = min(len(vals), len(current_cols))
                 if len(vals) != len(current_cols):
-                    log_caution(
-                        f"{label} row length mismatch: mode={mode} values={len(vals)} header_cols={len(current_cols)} "
-                        f"(using first {n})."
-                    )
+                    log_caution(f"{label} row length mismatch: mode={mode} values={len(vals)} header_cols={len(current_cols)}")
                 d = mode_to_colvals.setdefault(mode, {})
                 for k in range(n):
                     d[current_cols[k]] = vals[k]
             else:
-                # Legacy stitching: just append values as they appear
                 mode_to_listvals.setdefault(mode, []).extend(vals)
 
         i += 1
@@ -945,9 +814,8 @@ def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, L
         for mode in range(1, n_modes + 1):
             d = mode_to_colvals.get(mode, {})
             matrix.append([float(d.get(cid, 0.0)) for cid in col_ids_order])
-        return n_modes, n_cols, matrix, col_ids_order
+        return n_modes, n_cols, matrix, col_ids_order, i, matched_header
 
-    # Legacy path (no headers found)
     n_modes = max(mode_to_listvals.keys())
     n_cols = max((len(v) for v in mode_to_listvals.values()), default=0)
     matrix2: List[List[float]] = []
@@ -959,28 +827,13 @@ def parse_ved_matrix_stitched(lines: List[str], label: str) -> Tuple[int, int, L
             row = row[:n_cols]
         matrix2.append(row)
     col_ids_legacy = list(range(1, n_cols + 1))
-    return n_modes, n_cols, matrix2, col_ids_legacy
+    return n_modes, n_cols, matrix2, col_ids_legacy, i, matched_header
 
 
 def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> List[float]:
-    """
-    Extract VEDA frequencies in mode order.
-
-    Strategy (strict-to-loose, but always *section-aware*):
-    1) Prefer lines that explicitly include "cm-1"/"cm**-1" AND a leading mode number.
-    2) If not found, look for a "FREQ"/"FREQUENCIES" section and parse mode+freq lines in that section.
-    3) If still not found, as a guarded fallback, extract numeric frequency values (even without mode numbers)
-       *only inside the detected frequency section*.
-
-    We intentionally avoid "scan all floats in the header", because that tends to pick up unrelated numbers.
-
-    Returns:
-        freqs_ved (length == n_modes_hint if successfully extracted), else [].
-    """
     if not lines:
         return []
 
-    # Avoid scanning into the PED/TED matrices.
     stop = None
     for idx, ln in enumerate(lines):
         s = ln.strip().upper()
@@ -989,9 +842,6 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
             break
     header_region = lines[:stop] if stop is not None else lines
 
-    
-    # Pass 0: VEDA often prints plain numeric frequency lists (no units) before PED/TED.
-    # Extract the best "numeric-only" block from the header region.
     float_re = re.compile(r"[+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?")
     numline_re = re.compile(r"^\s*[+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?(?:\s+[+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?)*\s*$")
     blocks: List[List[float]] = []
@@ -1034,7 +884,7 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
             return [float(x) for x in best[:n_modes_hint]]
         if not n_modes_hint and len(best) >= 6:
             return [float(x) for x in best]
-# Pass 1: explicit unit lines (most reliable)
+
     unit_re = re.compile(
         r"^\s*(\d+)\s*[:\)]?\s*([+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?)\s*cm(?:\*\*)?-1\b",
         re.IGNORECASE
@@ -1053,19 +903,15 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
             freq_by_mode[mode] = float(freq)
 
     if n_modes_hint and freq_by_mode:
-        # Require a complete 1..n set (strict; avoids accidental partial matches)
         if all((k in freq_by_mode) for k in range(1, n_modes_hint + 1)):
             return [float(freq_by_mode[k]) for k in range(1, n_modes_hint + 1)]
 
-    # Pass 2: look for a "FREQUENCIES" section
-    # Heuristic: once we see a line that includes "FREQ", parse subsequent lines until blank/next header.
     start_idxs: List[int] = []
     for idx, ln in enumerate(header_region):
         u = ln.upper()
         if "FREQUENCIES" in u or re.search(r"\bFREQ\b", u):
             start_idxs.append(idx)
 
-    # mode + freq (no unit required)
     modefreq_re = re.compile(
         r"^\s*(\d+)\s*[:\)]?\s*([+-]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?)\b"
     )
@@ -1073,14 +919,12 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
     for sidx in start_idxs:
         freq_by_mode2: Dict[int, float] = {}
         section_lines: List[str] = []
-        for ln in header_region[sidx:sidx + 500]:  # hard cap to avoid runaway
+        for ln in header_region[sidx:sidx + 500]:
             section_lines.append(ln)
             if not ln.strip():
-                # a blank line tends to end the table
                 if freq_by_mode2:
                     break
                 continue
-            # Stop if it looks like we hit another section header
             if re.match(r"^[A-Z][A-Z0-9 _-]{4,}:?$", ln.strip().upper()) and freq_by_mode2:
                 break
 
@@ -1099,7 +943,6 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
             if all((k in freq_by_mode2) for k in range(1, n_modes_hint + 1)):
                 return [float(freq_by_mode2[k]) for k in range(1, n_modes_hint + 1)]
 
-        # Pass 3 (guarded): mode-less numeric list inside the section only
         if n_modes_hint:
             float_re = re.compile(r"[-+]?(?:\d*\.\d+|\d+\.\d*|\d+)(?:[EeDd][+-]?\d+)?")
             nums: List[float] = []
@@ -1107,7 +950,6 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
                 s = ln.strip()
                 if not s:
                     continue
-                # Extract all numeric tokens
                 toks = float_re.findall(s)
                 if not toks:
                     continue
@@ -1122,11 +964,9 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
                 if not vals:
                     continue
 
-                # If the line starts with an integer mode number, drop the first number (likely the mode index)
                 if re.match(r"^\s*\d+\s", ln) and len(vals) >= 2 and float(vals[0]).is_integer():
                     vals = vals[1:]
 
-                # Plausibility filter (very loose)
                 for v in vals:
                     if abs(v) <= 10000.0:
                         nums.append(v)
@@ -1137,9 +977,7 @@ def _extract_ved_frequencies(lines: List[str], n_modes_hint: Optional[int]) -> L
     return []
 
 
-
 def parse_ved_freqs_and_matrices(ved_input: Any):
-    """Extract VEDA frequencies and TED/PED matrices from a .ved file."""
     try:
         if isinstance(ved_input, (str, os.PathLike)):
             text = Path(ved_input).read_text(encoding="utf-8", errors="ignore")
@@ -1150,56 +988,60 @@ def parse_ved_freqs_and_matrices(ved_input: Any):
     except Exception as e:
         log_caution(f"Failed to read .ved: {ved_input}")
         log_error("parse_ved_freqs_and_matrices read", e)
-        return [], None, None
+        return [], None, []
 
     lines = text.splitlines()
-
     ted_block = None
-    ped_block = None
+    ped_blocks = []
 
     try:
-        n_m, n_c, ted_m, ted_cols = parse_ved_matrix_stitched(lines, "TED")
+        n_m, n_c, ted_m, ted_cols, _, _ = parse_ved_matrix_stitched(lines, "TED")
         ted_block = {"n_modes": n_m, "n_cols": n_c, "matrix": ted_m, "col_ids": ted_cols}
     except Exception as e:
         log_message(f"TED matrix not available: {e}")
 
-    try:
-        n_m, n_c, ped_m, ped_cols = parse_ved_matrix_stitched(lines, "PED")
-        ped_block = {"n_modes": n_m, "n_cols": n_c, "matrix": ped_m, "col_ids": ped_cols}
-    except Exception as e:
-        log_caution(f"PED matrix parse failed: {e}")
-        log_error("parse_ved_freqs_and_matrices PED", e)
+    curr_idx = 0
+    while curr_idx < len(lines):
+        try:
+            n_m, n_c, ped_m, ped_cols, next_idx, header = parse_ved_matrix_stitched(lines, "PED", start_from_idx=curr_idx)
+            
+            target_code = "s"
+            if "ALTERNATIVE" in header.upper():
+                target_code = "k"
+                if "ALTERNATIVE2" in header.upper():
+                    target_code = "v"
+            
+            ped_blocks.append({
+                "header": header,
+                "target_code": target_code,
+                "n_modes": n_m,
+                "n_cols": n_c,
+                "matrix": ped_m,
+                "col_ids": ped_cols
+            })
+            curr_idx = next_idx
+        except Exception:
+            break
 
     n_modes_hint = None
-    if ped_block and isinstance(ped_block.get("n_modes"), int):
-        n_modes_hint = int(ped_block["n_modes"])
+    if ped_blocks and isinstance(ped_blocks[0].get("n_modes"), int):
+        n_modes_hint = int(ped_blocks[0]["n_modes"])
     elif ted_block and isinstance(ted_block.get("n_modes"), int):
         n_modes_hint = int(ted_block["n_modes"])
 
     freqs_ved = _extract_ved_frequencies(lines, n_modes_hint)
 
     if n_modes_hint and not freqs_ved:
-        log_caution(
-            f"VEDA frequency extraction failed (expected {n_modes_hint} modes). "
-            f"ORCA↔VEDA mapping will be skipped."
-        )
+        log_caution(f"VEDA frequency extraction failed (expected {n_modes_hint} modes). ORCA↔VEDA mapping will be skipped.")
 
-    return freqs_ved, ted_block, ped_block
+    return freqs_ved, ted_block, ped_blocks
 
 
 # ------------------------------------------------------------
-# ORCA ↔ VEDA mode mapping (core: 1:1 minimum-cost ordered alignment)
+# ORCA ↔ VEDA mode mapping
 # ------------------------------------------------------------
 
 def _align_ordered_by_frequency(shorter: List[Tuple[int, float]], longer: List[Tuple[int, float]]):
-    """
-    shorter/longer are sorted by frequency ascending: [(mode, freq), ...]
-    Select len(shorter) items from longer while preserving order, minimizing total |Δfreq| (1:1 mapping).
-
-    Returns:
-        pairs: list of (idx_shorter, idx_longer)
-        total_cost: float
-    """
     S = len(shorter)
     L = len(longer)
     if S == 0 or L == 0 or L < S:
@@ -1245,9 +1087,6 @@ def _align_ordered_by_frequency(shorter: List[Tuple[int, float]], longer: List[T
 
 
 def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, dict], orca_intensities: Optional[Dict[int, float]] = None, tol_cm1: float = 5.0):
-    """
-    Map VEDA modes to ORCA modes (frequency-based 1:1 ordered alignment).
-    """
     stats = {
         "n_veda": len(freqs_ved) if freqs_ved else 0,
         "n_orca": len(orca_freq_data) if orca_freq_data else 0,
@@ -1256,16 +1095,11 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
         "mean_abs_diff": None,
     }
 
-    if not freqs_ved:
-        log_caution("VEDA frequencies are empty: ORCA mapping skipped.")
-        return {}, {}, stats
-
-    if not orca_freq_data:
-        log_caution("ORCA frequency data is empty: ORCA mapping skipped.")
+    if not freqs_ved or not orca_freq_data:
+        log_caution("VEDA or ORCA frequency data is empty: mapping skipped.")
         return {}, {}, stats
 
     veda_items = [(i + 1, float(f)) for i, f in enumerate(freqs_ved)]
-
     orca_items: List[Tuple[int, float]] = []
     for k, data in orca_freq_data.items():
         try:
@@ -1274,11 +1108,9 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
             continue
 
     if not orca_items:
-        log_caution("ORCA frequency data exists but no valid (mode,freq) pairs parsed.")
+        log_caution("ORCA frequency data exists but no valid pairs parsed.")
         return {}, {}, stats
 
-
-    # If IR spectrum data exists, use its starting mode index to drop translational/rotational modes.
     if orca_intensities:
         try:
             min_ir_mode = min(int(k) for k in orca_intensities.keys())
@@ -1288,6 +1120,7 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
             orca_items = [(m, f) for (m, f) in orca_items if m >= min_ir_mode]
             stats["n_orca"] = len(orca_items)
             log_message(f"ORCA mapping: using modes >= {min_ir_mode} based on IR spectrum table.")
+
     veda_sorted = sorted(veda_items, key=lambda x: x[1])
     orca_sorted = sorted(orca_items, key=lambda x: x[1])
 
@@ -1306,7 +1139,7 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
 
     pairs, _ = _align_ordered_by_frequency(shorter, longer)
     if not pairs:
-        log_caution("Failed to align VEDA↔ORCA by frequency (no pairs).")
+        log_caution("Failed to align VEDA↔ORCA by frequency.")
         return {}, {}, stats
 
     veda_to_orca: Dict[int, int] = {}
@@ -1328,16 +1161,12 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
         veda_to_orca = {v: o for o, v in orca_to_veda_tmp.items()}
 
     orca_to_veda = {o: v for v, o in veda_to_orca.items()}
-
     stats["n_matched"] = len(veda_to_orca)
     if diffs:
         stats["max_abs_diff"] = max(diffs)
         stats["mean_abs_diff"] = sum(diffs) / len(diffs)
 
     if stats["max_abs_diff"] is not None and stats["max_abs_diff"] > tol_cm1:
-        # Absolute tolerance is useful for catching "totally wrong file" cases when frequencies are similar-scale.
-        # However, some workflows produce systematic shifts (e.g., scaling or different reference), where the
-        # mapping can still be correct by rank-order. In that case, judge by *relative* deviation as well.
         try:
             vmax = max(abs(float(f)) for f in freqs_ved) if freqs_ved else 0.0
             omax = max(abs(float(d.get("freq", 0.0))) for d in orca_freq_data.values()) if orca_freq_data else 0.0
@@ -1346,18 +1175,9 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
             denom = 1.0
         rel = float(stats["max_abs_diff"]) / denom
         if rel >= 0.05:
-            log_caution(
-                f"ORCA↔VEDA mapping has large frequency diffs: max |Δ|={stats['max_abs_diff']:.2f} cm^-1 "
-                f"(tol={tol_cm1}, rel={rel:.3f}). Check files / ordering."
-            )
+            log_caution(f"ORCA↔VEDA large frequency diffs: max |Δ|={stats['max_abs_diff']:.2f} cm^-1")
         else:
-            log_message(
-                f"ORCA↔VEDA mapping: max |Δ|={stats['max_abs_diff']:.2f} cm^-1 exceeds tol={tol_cm1}, "
-                f"but relative deviation is small (rel={rel:.3f}); mapping is likely still OK."
-            )
-
-    if not swapped and O > V:
-        log_message(f"ORCA modes ({O}) > VEDA modes ({V}): extra ORCA modes were skipped by alignment.")
+            log_message(f"ORCA↔VEDA: max |Δ|={stats['max_abs_diff']:.2f} cm^-1 exceeds tol, but relative diff is small.")
 
     return veda_to_orca, orca_to_veda, stats
 
@@ -1367,9 +1187,6 @@ def build_veda_orca_mode_maps(freqs_ved: List[float], orca_freq_data: Dict[int, 
 # ------------------------------------------------------------
 
 def _ped_percent_matrix_with_check(mat: List[List[float]], target: float = 100.0, tol: float = 1.0):
-    """
-    If a PED row sum deviates from target (=100), take abs values and renormalize the row.
-    """
     if not mat:
         return mat, [], []
     out: List[List[float]] = []
@@ -1390,38 +1207,16 @@ def _ped_percent_matrix_with_check(mat: List[List[float]], target: float = 100.0
 
 
 # ------------------------------------------------------------
-# PED columns ↔ dd2 coordinates (use VEDA column IDs when available)
+# PED columns ↔ dd2 coordinates
 # ------------------------------------------------------------
 
-def build_ped_column_coord_map(ped_col_ids: List[int], dd2_coords: List[dict]):
-    """
-    Map PED column POSITION (1-based) to dd2 coordinate objects.
-
-    Mapping key:
-        VEDA column ID (from PED header rows)  -> dd2 coord_id
-
-    dd2 nuance:
-        Many .dd2 files contain multiple "coordinate tables" distinguished by coord_code
-        (e.g., primary coordinates + alternative coordinates). In that situation, the same
-        coord_id can appear multiple times. For PED labeling we *prefer* coord_code == 's'
-        when available, and fall back to the first occurrence otherwise.
-
-    Returns:
-        colpos_to_info: dict[int, dict]
-            colpos -> {"ped_col":int, "coord_id":int, "coord_code":str, "coord":dict|None}
-        cautions: list[str]
-    """
+def build_ped_column_coord_map(ped_col_ids: List[int], dd2_coords: List[dict], target_code: str = "s"):
     cautions: List[str] = []
 
-    if not ped_col_ids:
-        cautions.append("PED column IDs are empty: cannot label PED columns.")
+    if not ped_col_ids or not dd2_coords:
+        cautions.append("PED column IDs or dd2 coords are empty: cannot label PED columns.")
         return {}, cautions
 
-    if not dd2_coords:
-        cautions.append("dd2 coords are empty: cannot label PED columns.")
-        return {}, cautions
-
-    # Group dd2 rows by coord_id
     from collections import defaultdict
     rows_by_id: Dict[int, List[dict]] = defaultdict(list)
     missing_id = 0
@@ -1434,36 +1229,25 @@ def build_ped_column_coord_map(ped_col_ids: List[int], dd2_coords: List[dict]):
     if missing_id:
         cautions.append(f"dd2 coords missing coord_id: {missing_id} rows")
 
-    # Detect duplicates that are *actually problematic* (duplicates within the preferred code 's')
-    dup_any = [cid for cid, lst in rows_by_id.items() if len(lst) > 1]
-    if dup_any:
-        dup_s = []
-        for cid, lst in rows_by_id.items():
-            s_count = sum(1 for r in lst if (r.get("coord_code") or "").lower() == "s")
-            if s_count > 1:
-                dup_s.append(cid)
-
-        if dup_s:
-            cautions.append(f"dd2 has duplicate coord_id entries within coord_code='s' (first few): {sorted(dup_s)[:10]}")
-        else:
-            # This is common (alternative-coordinate tables). Log as INFO only.
-            log_message("dd2 contains multiple rows per coord_id (likely alternative coordinates). Using coord_code='s' when available.")
-
-    # Build a "best" representative per coord_id: prefer coord_code == 's'
     best_by_id: Dict[int, dict] = {}
     best_code_by_id: Dict[int, str] = {}
     for cid, lst in rows_by_id.items():
         chosen = None
         for r in lst:
-            if (r.get("coord_code") or "").lower() == "s":
+            if (r.get("coord_code") or "").lower() == target_code.lower():
                 chosen = r
                 break
+        if chosen is None and target_code.lower() != "s":
+            for r in lst:
+                if (r.get("coord_code") or "").lower() == "s":
+                    chosen = r
+                    break
         if chosen is None:
             chosen = lst[0]
+            
         best_by_id[cid] = chosen
         best_code_by_id[cid] = (chosen.get("coord_code") or "")
 
-    # PED header checks
     if len(set(ped_col_ids)) != len(ped_col_ids):
         cautions.append("PED column IDs contain duplicates (VEDA header may be malformed).")
 
@@ -1490,153 +1274,577 @@ def build_ped_column_coord_map(ped_col_ids: List[int], dd2_coords: List[dict]):
 
 
 # ------------------------------------------------------------
-# GUI text
+# GUI text and target-tracking extension
 # ------------------------------------------------------------
 
-MAIN_DESCRIPTION = """This tool cross-references the PED (Potential Energy Distribution) matrix in a VEDA (.ved) file
-with internal-coordinate definitions from DD2 + FMU, then exports the top contributing internal coordinates
-for each vibrational mode to CSV.
+DEFAULT_TOP_N_TERMS = 6
+DEFAULT_LONG_MIN_PED = 0.1
+DEFAULT_TARGET_MIN_PED = 0.1
+DEFAULT_TARGET_TOTAL_PED = 1.0
 
-Required input files:
-- .ved (VEDA output; PED matrix is required)
-- .dd2 (VEDA dd2 internal-coordinate table)
-- .fmu (atom → element mapping)
-- .out (ORCA output; required for ORCA↔VEDA mode mapping and IR data)
+METAL_ELEMENTS = set("""
+Li Be Na Mg Al K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Cs Ba
+La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Fr Ra Ac Th Pa U
+""".split())
 
-Quick steps:
-1) Click [Select .ved] (same-stem .dd2/.fmu/.out in the same folder will be auto-filled when present)
-2) Review or override the auto-filled file paths if needed
-3) Click [RUN ANALYSIS]
-4) Inspect the generated CSV files (see the "User Guide" tab for details)
+MAIN_DESCRIPTION = f"""Target-tracking PED analyzer for VEDA/DD2/QC output files.
+Version: {APP_VERSION} ({APP_RELEASE_DATE})
+
+This program keeps the original mode-centered PED export, and adds coordinate-centered analysis:
+- Long PED table: rank 7 and below are searchable.
+- Target hits: selected internal coordinates are traced across all vibrational modes.
+- Target summaries: metal-ligand stretch components split across fingerprint-region modes can be found by total target PED.
 """
 
-USAGE_MANUAL = """OUTPUT FILES
-1) <stem>_PED_table.csv
-   - A table of the top PED contributors (up to 6 internal coordinates) for each VEDA mode.
-2) <stem>_coordinates_lookup.csv
-   - A lookup table for dd2 internal coordinates with atom indices (and additional metadata where available).
-   - Includes coord_code (e.g., 's' primary / 'k','v' alternative tables) to help disambiguate.
+USAGE_MANUAL = """Recommended workflow
 
-KEY COLUMNS IN PED_table.csv
-- mode_veda      : VEDA mode index (1-based)
-- mode_orca      : Matched ORCA mode index (blank if not matched)
-- freq_veda      : VEDA frequency [cm^-1] (0 if unavailable)
-- freq_orca      : ORCA frequency [cm^-1] (0 if unavailable)
-- delta_freq     : freq_orca - freq_veda (blank if not matched)
-- abs_delta_freq : |delta_freq| (blank if not matched)
-- irrep          : ORCA irrep (blank if unavailable)
-- IR_intensity  : IR intensity (ORCA/Gaussian; 0 if unavailable)
-- ped_sum        : Sum of absolute PED contributions in the row (typically ~100)
-- note           : Renormalization note if PED row sum deviates from ~100 (e.g., renorm_from_XXX)
-- caution        : Per-mode caution messages (see below)
+1. Files / Precheck
+   Select .ved, .dd2, optional .fmu, and QC output (.out/.log). Press Load / Precheck.
 
-TOP CONTRIBUTION FIELDS (up to 6)
-- PED1_col / PED1_coord_id / PED1_coord_code / PED1_label / PED1_val ... PED6_*
-  - PED*_col      : PED matrix column position (1-based)
-  - PED*_coord_id : Coordinate ID taken from the VEDA PED header rows (falls back to col position if missing)
-  - PED*_coord_code: dd2 coord_code used for labeling (helps disambiguate duplicates in the lookup CSV)
-  - PED*_label    : Simplified label (element symbols only; check lookup CSV for atom indices)
-  - PED*_val      : Contribution [%] (very small contributions may be omitted)
+2. Coordinate Browser
+   Filter DD2 internal coordinates. For metal-ligand stretches, use group=STRE and metal atom index,
+   or press Auto-detect metal-ligand stretches.
 
-IMPORTANT: CONSISTENCY CHECKS (CAUTION)
-- PED labeling uses the VEDA PED header column IDs when present.
-  If dd2 does not contain those coord_id values, labels become UNKNOWN and CAUTION messages are recorded.
-- ORCA↔VEDA mapping is done via frequency-based 1:1 ordered alignment.
-  Large |Δfreq| often indicates mismatched files, different geometries, or missing/extra modes.
+3. Target Definition
+   Confirm the target coordinate IDs. Set a frequency range and PED thresholds.
 
-LOG FILE
-- A .log file is created next to the script (or in your home folder if that is not writable).
-  When results look suspicious, check CAUTION/ERROR messages in the log first.
+4. Run Analysis
+   Export the standard top-N table, long PED table, target hits, and target summaries.
+
+Key output files
+
+- *_PED_table_*.csv
+  Original-style mode-centered table with top-N PED terms.
+
+- *_PED_terms_long_*.csv
+  Long-format PED table. Use this when an internal coordinate is hidden below rank 6.
+
+- *_target_hits_*.csv
+  Every selected coordinate detected in each mode, with PED value and rank.
+
+- *_target_summary_by_mode_*.csv
+  Main table for split metal-ligand stretches. Modes are ranked by total target PED.
+
+- *_target_summary_by_coord_*.csv
+  Coordinate-centered summary: where each target coordinate appears most strongly.
+
+- *_target_matrix_*.csv
+  Matrix format: rows are modes and columns are target coordinates. Useful for Excel heatmaps.
 """
 
 
-# ------------------------------------------------------------
-# GUI app
-# ------------------------------------------------------------
+def _parse_int_list(text: Any) -> List[int]:
+    if text is None:
+        return []
+    out: List[int] = []
+    for tok in re.findall(r"[+-]?\d+", str(text)):
+        try:
+            out.append(int(tok))
+        except Exception:
+            continue
+    return out
+
+
+def _parse_symbol_list(text: Any) -> List[str]:
+    if text is None:
+        return []
+    vals: List[str] = []
+    for tok in re.split(r"[,;\s]+", str(text).strip()):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if re.fullmatch(r"[A-Za-z]{1,3}", tok):
+            vals.append(tok.capitalize())
+    return vals
+
+
+def _parse_optional_float(text: Any) -> Optional[float]:
+    s = "" if text is None else str(text).strip()
+    if not s:
+        return None
+    try:
+        return float(safe_float(s))
+    except Exception:
+        return None
+
+
+def _code_output_label(code: str) -> str:
+    c = (code or "").strip().lower()
+    if c == "s":
+        return "standard"
+    if c == "k":
+        return "alternative_k"
+    if c == "v":
+        return "alternative_v"
+    return c or "unknown"
+
+
+def _format_atom(idx: int, atom_map: Optional[Dict[int, str]]) -> str:
+    amap = atom_map or {}
+    el = amap.get(idx, "")
+    if el:
+        return f"{el}{idx}"
+    return f"#{idx}"
+
+
+def _coord_atom_label(c_obj: Optional[dict], atom_map: Optional[Dict[int, str]]) -> str:
+    if not c_obj:
+        return ""
+    atoms = c_obj.get("atoms", []) or []
+    return "-".join(_format_atom(int(a), atom_map) for a in atoms)
+
+
+def _coord_label(c_obj: Optional[dict], atom_map: Optional[Dict[int, str]], include_raw: bool = True) -> str:
+    if not c_obj:
+        return "UNKNOWN"
+    group = (c_obj.get("coord_group", "") or "").upper()
+    atoms = c_obj.get("atoms", []) or []
+    atom_label = _coord_atom_label(c_obj, atom_map)
+    if group.startswith("STRE") and len(atoms) == 2:
+        body = f"str({atom_label})"
+    elif group.startswith("BEND") and len(atoms) == 3:
+        body = f"bend({atom_label})"
+    elif group.startswith("TORS") and len(atoms) == 4:
+        body = f"tors({atom_label})"
+    else:
+        body = f"{group}({atom_label})" if atom_label else group
+    raw = c_obj.get("coord_label_raw", "") or ""
+    if include_raw and raw:
+        body += f"[{raw}]"
+    return body
+
+
+def _coord_group(c_obj: Optional[dict]) -> str:
+    if not c_obj:
+        return ""
+    return (c_obj.get("coord_group", "") or "")
+
+
+def _coord_code(c_obj: Optional[dict]) -> str:
+    if not c_obj:
+        return ""
+    return (c_obj.get("coord_code", "") or "")
+
+
+def _coord_id(c_obj: Optional[dict], fallback: Any = "") -> Any:
+    if not c_obj:
+        return fallback
+    cid = c_obj.get("coord_id", fallback)
+    return cid if cid is not None else fallback
+
+
+def _freq_in_range(freq: float, fmin: Optional[float], fmax: Optional[float]) -> bool:
+    try:
+        f = float(freq)
+    except Exception:
+        return False
+    if fmin is not None and f < fmin:
+        return False
+    if fmax is not None and f > fmax:
+        return False
+    return True
+
+
+def _coord_matches_metal_ligand_stretch(
+    c_obj: Optional[dict],
+    atom_map: Optional[Dict[int, str]],
+    metal_atoms: Optional[List[int]] = None,
+    ligand_atoms: Optional[List[int]] = None,
+    ligand_elements: Optional[List[str]] = None,
+) -> bool:
+    if not c_obj:
+        return False
+    group = (c_obj.get("coord_group", "") or "").upper()
+    atoms = [int(a) for a in (c_obj.get("atoms", []) or [])]
+    if not group.startswith("STRE") or len(atoms) != 2:
+        return False
+
+    metal_set = set(int(a) for a in (metal_atoms or []))
+    ligand_atom_set = set(int(a) for a in (ligand_atoms or []))
+    ligand_el_set = set(e.capitalize() for e in (ligand_elements or []))
+    amap = atom_map or {}
+
+    def is_metal_atom(a: int) -> bool:
+        if metal_set:
+            return a in metal_set
+        return amap.get(a, "").capitalize() in METAL_ELEMENTS
+
+    metal_side = [a for a in atoms if is_metal_atom(a)]
+    if not metal_side:
+        return False
+
+    other_side = [a for a in atoms if a not in metal_side]
+    if not other_side:
+        return False
+
+    if ligand_atom_set and not any(a in ligand_atom_set for a in other_side):
+        return False
+
+    if ligand_el_set:
+        other_els = set((amap.get(a, "") or "").capitalize() for a in other_side)
+        if not (other_els & ligand_el_set):
+            return False
+
+    return True
+
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title(f"{APP_NAME} (public v9)")
-        self.geometry("860x660")
+        self.title(f"{APP_VERSION_LABEL} (Target Coordinate Tracking)")
+        self.geometry("1120x780")
 
         self.ved_path: Optional[str] = None
         self.dd2_path: Optional[str] = None
         self.fmu_path: Optional[str] = None
         self.out_path: Optional[str] = None
+        self.output_dir_path: Optional[str] = None
 
         self._cfg = load_config()
+        self.analysis_ctx: Optional[dict] = None
+        self.coordinate_rows: List[dict] = []
+        self._preview_dfs: Dict[str, pd.DataFrame] = {}
 
         self._build_gui()
         self._apply_config_on_startup()
+
+    # -----------------------------
+    # GUI construction
+    # -----------------------------
 
     def _build_gui(self):
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True)
 
-        self.tab_main = ttk.Frame(nb)
+        self.tab_files = ttk.Frame(nb)
+        self.tab_coords = ttk.Frame(nb)
+        self.tab_target = ttk.Frame(nb)
+        self.tab_run = ttk.Frame(nb)
+        self.tab_results = ttk.Frame(nb)
         self.tab_usage = ttk.Frame(nb)
 
-        nb.add(self.tab_main, text="Analysis")
+        nb.add(self.tab_files, text="Files / Precheck")
+        nb.add(self.tab_coords, text="Coordinate Browser")
+        nb.add(self.tab_target, text="Target Definition")
+        nb.add(self.tab_run, text="Run Analysis")
+        nb.add(self.tab_results, text="Results Preview")
         nb.add(self.tab_usage, text="User Guide")
 
-        # --- Main tab ---
-        main = self.tab_main
+        self._build_files_tab()
+        self._build_coordinate_tab()
+        self._build_target_tab()
+        self._build_run_tab()
+        self._build_results_tab()
+        self._build_usage_tab()
+
+    def _build_files_tab(self):
+        main = self.tab_files
         main.columnconfigure(0, weight=1)
+        desc = tk.Label(main, text=MAIN_DESCRIPTION, justify="left", anchor="w", wraplength=1040)
+        desc.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 6))
 
-        desc = tk.Label(main, text=MAIN_DESCRIPTION, justify="left", anchor="w", wraplength=820)
-        desc.pack(fill="x", padx=12, pady=(12, 6))
-
-        frame = tk.Frame(main, padx=12, pady=8)
-        frame.pack(fill="both", expand=False)
-
+        frame = ttk.LabelFrame(main, text="Input files", padding=10)
+        frame.grid(row=1, column=0, sticky="ew", padx=12, pady=6)
+        frame.columnconfigure(1, weight=1)
         self._labels: Dict[str, tk.Label] = {}
 
-        def make_row(lbl_text: str, attr_name: str, file_types):
-            row = tk.Frame(frame, pady=4)
-            row.pack(fill="x")
-            btn = tk.Button(row, text=lbl_text, width=16,
+        def make_row(r: int, lbl_text: str, attr_name: str, file_types):
+            btn = tk.Button(frame, text=lbl_text, width=22,
                             command=lambda: self._select_file(attr_name, file_types))
-            btn.pack(side="left")
-            lbl = tk.Label(row, text="(Not selected)", fg="gray", anchor="w")
-            lbl.pack(side="left", padx=10, fill="x", expand=True)
+            btn.grid(row=r, column=0, sticky="w", pady=3)
+            lbl = tk.Label(frame, text="(Not selected)", fg="gray", anchor="w")
+            lbl.grid(row=r, column=1, sticky="ew", padx=10, pady=3)
             self._labels[attr_name] = lbl
 
-        make_row("Select .ved", "ved_path", [("VEDA files", "*.ved"), ("All files", "*.*")])
-        make_row("Select .dd2", "dd2_path", [("DD2 files", "*.dd2"), ("All files", "*.*")])
-        make_row("Select .fmu", "fmu_path", [("FMU files", "*.fmu"), ("All files", "*.*")])
-        make_row("Select QC output (.out/.log)", "out_path", [("ORCA/Gaussian output", "*.out *.log"), ("ORCA out", "*.out"), ("Gaussian log", "*.log"), ("All files", "*.*")])
+        make_row(0, "Select .ved", "ved_path", [("VEDA files", "*.ved"), ("All files", "*.*")])
+        make_row(1, "Select .dd2", "dd2_path", [("DD2 files", "*.dd2"), ("All files", "*.*")])
+        make_row(2, "Select .fmu", "fmu_path", [("FMU files", "*.fmu"), ("All files", "*.*")])
+        make_row(3, "Select QC output", "out_path", [("QC output", "*.out *.log"), ("All files", "*.*")])
 
-        btn_run = tk.Button(main, text="RUN ANALYSIS", font=("Arial", 12, "bold"),
-                            bg="#dddddd", command=self.run)
-        btn_run.pack(padx=12, pady=14, fill="x")
+        btn_out = tk.Button(frame, text="Select output folder", width=22, command=self._select_output_dir)
+        btn_out.grid(row=4, column=0, sticky="w", pady=3)
+        lbl_out = tk.Label(frame, text="(Same folder as .ved)", fg="gray", anchor="w")
+        lbl_out.grid(row=4, column=1, sticky="ew", padx=10, pady=3)
+        self._labels["output_dir_path"] = lbl_out
 
-        self.status_lbl = tk.Label(main, text="Ready", fg="blue", anchor="w")
-        self.status_lbl.pack(fill="x", padx=12, pady=(0, 8))
+        action = ttk.Frame(main)
+        action.grid(row=2, column=0, sticky="ew", padx=12, pady=(8, 4))
+        ttk.Button(action, text="Load / Precheck", command=self.precheck).pack(side="left")
+        self.status_lbl = tk.Label(action, text="Ready", fg="blue", anchor="w")
+        self.status_lbl.pack(side="left", padx=12, fill="x", expand=True)
 
-        # --- Usage tab ---
+        pre = ttk.LabelFrame(main, text="Precheck summary", padding=6)
+        pre.grid(row=3, column=0, sticky="nsew", padx=12, pady=6)
+        main.rowconfigure(3, weight=1)
+        pre.rowconfigure(0, weight=1)
+        pre.columnconfigure(0, weight=1)
+        self.precheck_text = scrolledtext.ScrolledText(pre, wrap="word", height=16)
+        self.precheck_text.grid(row=0, column=0, sticky="nsew")
+
+    def _make_tree_with_scrollbars(self, parent, height: int = 15) -> ttk.Treeview:
+        frame = ttk.Frame(parent)
+        frame.pack(fill="both", expand=True)
+        tree = ttk.Treeview(frame, show="headings", height=height, selectmode="extended")
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        return tree
+
+    def _build_coordinate_tab(self):
+        tab = self.tab_coords
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(2, weight=1)
+
+        filters = ttk.LabelFrame(tab, text="Filters", padding=8)
+        filters.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
+
+        self.filter_code_var = tk.StringVar(value="(any)")
+        self.filter_group_var = tk.StringVar(value="(any)")
+        self.filter_atom_var = tk.StringVar(value="")
+        self.filter_element_var = tk.StringVar(value="")
+        self.filter_label_var = tk.StringVar(value="")
+
+        ttk.Label(filters, text="Code").grid(row=0, column=0, sticky="w")
+        self.filter_code_combo = ttk.Combobox(filters, textvariable=self.filter_code_var, values=["(any)"], width=12, state="readonly")
+        self.filter_code_combo.grid(row=0, column=1, padx=4, sticky="w")
+
+        ttk.Label(filters, text="Group").grid(row=0, column=2, sticky="w")
+        self.filter_group_combo = ttk.Combobox(filters, textvariable=self.filter_group_var, values=["(any)"], width=14, state="readonly")
+        self.filter_group_combo.grid(row=0, column=3, padx=4, sticky="w")
+
+        ttk.Label(filters, text="Contains atom index").grid(row=0, column=4, sticky="w")
+        ttk.Entry(filters, textvariable=self.filter_atom_var, width=14).grid(row=0, column=5, padx=4, sticky="w")
+
+        ttk.Label(filters, text="Contains element").grid(row=1, column=0, sticky="w", pady=(5, 0))
+        ttk.Entry(filters, textvariable=self.filter_element_var, width=14).grid(row=1, column=1, padx=4, sticky="w", pady=(5, 0))
+
+        ttk.Label(filters, text="Label contains").grid(row=1, column=2, sticky="w", pady=(5, 0))
+        ttk.Entry(filters, textvariable=self.filter_label_var, width=30).grid(row=1, column=3, columnspan=3, padx=4, sticky="ew", pady=(5, 0))
+        filters.columnconfigure(3, weight=1)
+
+        buttons = ttk.Frame(tab)
+        buttons.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
+        ttk.Button(buttons, text="Apply filter", command=self.refresh_coordinate_table).pack(side="left", padx=(0, 6))
+        ttk.Button(buttons, text="Add selected to target", command=self.add_selected_coords_to_target).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Auto-detect metal-ligand stretches", command=self.auto_detect_target_coords).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Clear filter", command=self.clear_coordinate_filters).pack(side="left", padx=6)
+
+        table_frame = ttk.LabelFrame(tab, text="DD2 internal coordinates", padding=6)
+        table_frame.grid(row=2, column=0, sticky="nsew", padx=12, pady=6)
+        table_frame.rowconfigure(0, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+        self.coord_tree = self._make_tree_with_scrollbars(table_frame, height=20)
+        self._configure_coord_tree()
+
+    def _configure_coord_tree(self):
+        cols = ["coord_id", "code", "group", "atoms", "atom_label", "label", "raw_label"]
+        self.coord_tree["columns"] = cols
+        widths = {
+            "coord_id": 80,
+            "code": 50,
+            "group": 90,
+            "atoms": 120,
+            "atom_label": 180,
+            "label": 320,
+            "raw_label": 160,
+        }
+        for c in cols:
+            self.coord_tree.heading(c, text=c)
+            self.coord_tree.column(c, width=widths.get(c, 120), anchor="w")
+
+    def _build_target_tab(self):
+        tab = self.tab_target
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(2, weight=1)
+
+        settings = ttk.LabelFrame(tab, text="Target coordinate set", padding=8)
+        settings.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
+        settings.columnconfigure(1, weight=1)
+
+        self.target_name_var = tk.StringVar(value="metal_ligand_stretch")
+        self.metal_atoms_var = tk.StringVar(value="")
+        self.ligand_atoms_var = tk.StringVar(value="")
+        self.ligand_elements_var = tk.StringVar(value="N O S P Cl Br I")
+        self.use_rule_if_empty_var = tk.BooleanVar(value=True)
+
+        ttk.Label(settings, text="Target set name").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Entry(settings, textvariable=self.target_name_var, width=32).grid(row=0, column=1, sticky="w", pady=3)
+
+        ttk.Label(settings, text="Metal atom index/indices").grid(row=1, column=0, sticky="w", pady=3)
+        ttk.Entry(settings, textvariable=self.metal_atoms_var, width=32).grid(row=1, column=1, sticky="w", pady=3)
+        ttk.Label(settings, text="Blank = auto-detect metallic elements").grid(row=1, column=2, sticky="w", padx=8)
+
+        ttk.Label(settings, text="Ligand atom indices").grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Entry(settings, textvariable=self.ligand_atoms_var, width=32).grid(row=2, column=1, sticky="w", pady=3)
+        ttk.Label(settings, text="Optional").grid(row=2, column=2, sticky="w", padx=8)
+
+        ttk.Label(settings, text="Ligand elements").grid(row=3, column=0, sticky="w", pady=3)
+        ttk.Entry(settings, textvariable=self.ligand_elements_var, width=32).grid(row=3, column=1, sticky="w", pady=3)
+        ttk.Label(settings, text="Example: N O S Cl").grid(row=3, column=2, sticky="w", padx=8)
+
+        ttk.Checkbutton(settings, text="If target ID list is empty, use the metal-ligand stretch rule", variable=self.use_rule_if_empty_var).grid(row=4, column=0, columnspan=3, sticky="w", pady=3)
+
+        ids_frame = ttk.LabelFrame(tab, text="Target coord_id list", padding=8)
+        ids_frame.grid(row=1, column=0, sticky="ew", padx=12, pady=6)
+        ids_frame.columnconfigure(0, weight=1)
+        self.target_ids_text = tk.Text(ids_frame, height=4, wrap="word")
+        self.target_ids_text.grid(row=0, column=0, sticky="ew")
+        id_buttons = ttk.Frame(ids_frame)
+        id_buttons.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        ttk.Button(id_buttons, text="Sort / Deduplicate IDs", command=self.normalize_target_ids_text).pack(side="left", padx=(0, 6))
+        ttk.Button(id_buttons, text="Replace by auto-detect", command=self.auto_detect_target_coords).pack(side="left", padx=6)
+        ttk.Button(id_buttons, text="Clear target IDs", command=self.clear_target_ids).pack(side="left", padx=6)
+        ttk.Button(id_buttons, text="Refresh target preview", command=self.refresh_target_preview).pack(side="left", padx=6)
+
+        preview_frame = ttk.LabelFrame(tab, text="Target coordinate preview", padding=6)
+        preview_frame.grid(row=2, column=0, sticky="nsew", padx=12, pady=6)
+        preview_frame.rowconfigure(0, weight=1)
+        preview_frame.columnconfigure(0, weight=1)
+        self.target_tree = self._make_tree_with_scrollbars(preview_frame, height=12)
+        self._configure_generic_tree(self.target_tree, ["coord_id", "code", "group", "atom_label", "label"])
+
+    def _build_run_tab(self):
+        tab = self.tab_run
+        tab.columnconfigure(0, weight=1)
+
+        opt = ttk.LabelFrame(tab, text="Output options", padding=8)
+        opt.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
+        opt.columnconfigure(1, weight=1)
+
+        self.output_standard_var = tk.BooleanVar(value=True)
+        self.output_long_var = tk.BooleanVar(value=True)
+        self.output_target_hits_var = tk.BooleanVar(value=True)
+        self.output_summary_mode_var = tk.BooleanVar(value=True)
+        self.output_summary_coord_var = tk.BooleanVar(value=True)
+        self.output_target_matrix_var = tk.BooleanVar(value=True)
+        self.include_alternative_var = tk.BooleanVar(value=False)
+        self.include_all_target_modes_var = tk.BooleanVar(value=False)
+
+        self.top_n_var = tk.StringVar(value=str(DEFAULT_TOP_N_TERMS))
+        self.standard_min_ped_var = tk.StringVar(value=str(DEFAULT_LONG_MIN_PED))
+        self.long_min_ped_var = tk.StringVar(value=str(DEFAULT_LONG_MIN_PED))
+        self.target_min_ped_var = tk.StringVar(value=str(DEFAULT_TARGET_MIN_PED))
+        self.target_total_min_ped_var = tk.StringVar(value=str(DEFAULT_TARGET_TOTAL_PED))
+        self.freq_min_var = tk.StringVar(value="")
+        self.freq_max_var = tk.StringVar(value="")
+
+        ttk.Checkbutton(opt, text="Standard top-N PED table", variable=self.output_standard_var).grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(opt, text="Long PED table", variable=self.output_long_var).grid(row=0, column=1, sticky="w")
+        ttk.Checkbutton(opt, text="Target hits", variable=self.output_target_hits_var).grid(row=0, column=2, sticky="w")
+        ttk.Checkbutton(opt, text="Target summary by mode", variable=self.output_summary_mode_var).grid(row=1, column=0, sticky="w")
+        ttk.Checkbutton(opt, text="Target summary by coordinate", variable=self.output_summary_coord_var).grid(row=1, column=1, sticky="w")
+        ttk.Checkbutton(opt, text="Target matrix", variable=self.output_target_matrix_var).grid(row=1, column=2, sticky="w")
+        ttk.Checkbutton(opt, text="Include alternative coordinate sets (k/v)", variable=self.include_alternative_var).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(opt, text="Include target modes below total threshold", variable=self.include_all_target_modes_var).grid(row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
+
+        thresh = ttk.LabelFrame(tab, text="Thresholds and frequency range", padding=8)
+        thresh.grid(row=1, column=0, sticky="ew", padx=12, pady=8)
+
+        fields = [
+            ("Top N in standard table", self.top_n_var),
+            ("Standard table min PED (%)", self.standard_min_ped_var),
+            ("Long table min PED (%)", self.long_min_ped_var),
+            ("Target hit min PED (%)", self.target_min_ped_var),
+            ("Target total min PED per mode (%)", self.target_total_min_ped_var),
+            ("Freq min (cm^-1)", self.freq_min_var),
+            ("Freq max (cm^-1)", self.freq_max_var),
+        ]
+        for i, (lbl, var) in enumerate(fields):
+            r = i // 2
+            c = (i % 2) * 2
+            ttk.Label(thresh, text=lbl).grid(row=r, column=c, sticky="w", pady=3, padx=(0, 6))
+            ttk.Entry(thresh, textvariable=var, width=14).grid(row=r, column=c + 1, sticky="w", pady=3, padx=(0, 18))
+
+        run_frame = ttk.Frame(tab)
+        run_frame.grid(row=2, column=0, sticky="ew", padx=12, pady=14)
+        tk.Button(run_frame, text="RUN TARGET ANALYSIS", font=("Arial", 12, "bold"), bg="#dddddd", command=self.run).pack(fill="x")
+
+        self.run_text = scrolledtext.ScrolledText(tab, wrap="word", height=18)
+        self.run_text.grid(row=3, column=0, sticky="nsew", padx=12, pady=8)
+        tab.rowconfigure(3, weight=1)
+
+    def _build_results_tab(self):
+        tab = self.tab_results
+        tab.columnconfigure(0, weight=1)
+        tab.rowconfigure(1, weight=1)
+
+        self.results_text = scrolledtext.ScrolledText(tab, wrap="word", height=7)
+        self.results_text.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
+
+        nb = ttk.Notebook(tab)
+        nb.grid(row=1, column=0, sticky="nsew", padx=12, pady=8)
+
+        self.preview_summary_mode_frame = ttk.Frame(nb)
+        self.preview_hits_frame = ttk.Frame(nb)
+        self.preview_summary_coord_frame = ttk.Frame(nb)
+        nb.add(self.preview_summary_mode_frame, text="Summary by mode")
+        nb.add(self.preview_hits_frame, text="Target hits")
+        nb.add(self.preview_summary_coord_frame, text="Summary by coordinate")
+
+        self.summary_mode_tree = self._make_tree_with_scrollbars(self.preview_summary_mode_frame, height=18)
+        self.hits_tree = self._make_tree_with_scrollbars(self.preview_hits_frame, height=18)
+        self.summary_coord_tree = self._make_tree_with_scrollbars(self.preview_summary_coord_frame, height=18)
+
+    def _build_usage_tab(self):
         usage = self.tab_usage
         usage.columnconfigure(0, weight=1)
         usage.rowconfigure(0, weight=1)
-
         st = scrolledtext.ScrolledText(usage, wrap="word", font=("TkDefaultFont", 10))
         st.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
         st.insert("1.0", USAGE_MANUAL)
         st.configure(state="disabled")
 
+    # -----------------------------
+    # Config and path helpers
+    # -----------------------------
+
     def _apply_config_on_startup(self):
-        # Restore from config (existing files only)
         for attr in ("ved_path", "dd2_path", "fmu_path", "out_path"):
             p = self._cfg.get(attr)
             if p and Path(p).is_file():
                 self._set_path(attr, p, save=False)
 
-        # If .ved exists, auto-fill same-stem companion files that are missing
+        p_out = self._cfg.get("output_dir_path")
+        if p_out and Path(p_out).is_dir():
+            self._set_path("output_dir_path", p_out, save=False)
+
         if self.ved_path and Path(self.ved_path).is_file():
             self._auto_fill_related_files(self.ved_path, only_if_missing=True, save=False)
 
-        # Save back (dropping non-existing paths)
+        self.target_name_var.set(self._cfg.get("target_name", self.target_name_var.get()))
+        self.metal_atoms_var.set(self._cfg.get("metal_atoms", self.metal_atoms_var.get()))
+        self.ligand_atoms_var.set(self._cfg.get("ligand_atoms", self.ligand_atoms_var.get()))
+        self.ligand_elements_var.set(self._cfg.get("ligand_elements", self.ligand_elements_var.get()))
+        self.use_rule_if_empty_var.set(bool(self._cfg.get("use_rule_if_empty", self.use_rule_if_empty_var.get())))
+
+        target_ids = self._cfg.get("target_coord_ids", "")
+        if target_ids:
+            self.target_ids_text.delete("1.0", "end")
+            self.target_ids_text.insert("1.0", str(target_ids))
+
+        self.top_n_var.set(str(self._cfg.get("top_n", self.top_n_var.get())))
+        self.standard_min_ped_var.set(str(self._cfg.get("standard_min_ped", self.standard_min_ped_var.get())))
+        self.long_min_ped_var.set(str(self._cfg.get("long_min_ped", self.long_min_ped_var.get())))
+        self.target_min_ped_var.set(str(self._cfg.get("target_min_ped", self.target_min_ped_var.get())))
+        self.target_total_min_ped_var.set(str(self._cfg.get("target_total_min_ped", self.target_total_min_ped_var.get())))
+        self.freq_min_var.set(str(self._cfg.get("freq_min", self.freq_min_var.get())))
+        self.freq_max_var.set(str(self._cfg.get("freq_max", self.freq_max_var.get())))
+
+        self.output_standard_var.set(bool(self._cfg.get("output_standard", self.output_standard_var.get())))
+        self.output_long_var.set(bool(self._cfg.get("output_long", self.output_long_var.get())))
+        self.output_target_hits_var.set(bool(self._cfg.get("output_target_hits", self.output_target_hits_var.get())))
+        self.output_summary_mode_var.set(bool(self._cfg.get("output_summary_mode", self.output_summary_mode_var.get())))
+        self.output_summary_coord_var.set(bool(self._cfg.get("output_summary_coord", self.output_summary_coord_var.get())))
+        self.output_target_matrix_var.set(bool(self._cfg.get("output_target_matrix", self.output_target_matrix_var.get())))
+        self.include_alternative_var.set(bool(self._cfg.get("include_alternative", self.include_alternative_var.get())))
+        self.include_all_target_modes_var.set(bool(self._cfg.get("include_all_target_modes", self.include_all_target_modes_var.get())))
+
         self._save_current_config()
 
     def _save_current_config(self):
@@ -1645,6 +1853,7 @@ class App(tk.Tk):
         cfg["dd2_path"] = self.dd2_path or ""
         cfg["fmu_path"] = self.fmu_path or ""
         cfg["out_path"] = self.out_path or ""
+        cfg["output_dir_path"] = self.output_dir_path or ""
 
         last_dir = ""
         for p in (self.ved_path, self.dd2_path, self.fmu_path, self.out_path):
@@ -1653,6 +1862,31 @@ class App(tk.Tk):
                 break
         if last_dir:
             cfg["last_dir"] = last_dir
+
+        try:
+            cfg["target_name"] = self.target_name_var.get()
+            cfg["metal_atoms"] = self.metal_atoms_var.get()
+            cfg["ligand_atoms"] = self.ligand_atoms_var.get()
+            cfg["ligand_elements"] = self.ligand_elements_var.get()
+            cfg["use_rule_if_empty"] = bool(self.use_rule_if_empty_var.get())
+            cfg["target_coord_ids"] = self.target_ids_text.get("1.0", "end").strip()
+            cfg["top_n"] = self.top_n_var.get()
+            cfg["standard_min_ped"] = self.standard_min_ped_var.get()
+            cfg["long_min_ped"] = self.long_min_ped_var.get()
+            cfg["target_min_ped"] = self.target_min_ped_var.get()
+            cfg["target_total_min_ped"] = self.target_total_min_ped_var.get()
+            cfg["freq_min"] = self.freq_min_var.get()
+            cfg["freq_max"] = self.freq_max_var.get()
+            cfg["output_standard"] = bool(self.output_standard_var.get())
+            cfg["output_long"] = bool(self.output_long_var.get())
+            cfg["output_target_hits"] = bool(self.output_target_hits_var.get())
+            cfg["output_summary_mode"] = bool(self.output_summary_mode_var.get())
+            cfg["output_summary_coord"] = bool(self.output_summary_coord_var.get())
+            cfg["output_target_matrix"] = bool(self.output_target_matrix_var.get())
+            cfg["include_alternative"] = bool(self.include_alternative_var.get())
+            cfg["include_all_target_modes"] = bool(self.include_all_target_modes_var.get())
+        except Exception:
+            pass
 
         self._cfg = cfg
         save_config(cfg)
@@ -1664,7 +1898,10 @@ class App(tk.Tk):
             if path and Path(path).exists():
                 lbl.config(text=path, fg="black")
             else:
-                lbl.config(text="(Not selected)", fg="gray")
+                if attr == "output_dir_path":
+                    lbl.config(text="(Same folder as .ved)", fg="gray")
+                else:
+                    lbl.config(text="(Not selected)", fg="gray")
         if save:
             self._save_current_config()
 
@@ -1683,23 +1920,19 @@ class App(tk.Tk):
             return
 
         self._set_path(attr, path, save=False)
-
-        # When selecting a .ved, auto-fill same-stem files in the same folder.
         if attr == "ved_path":
             self._auto_fill_related_files(path, only_if_missing=False, save=False)
-
+        self.analysis_ctx = None
         self._save_current_config()
 
-    def _auto_fill_related_files(self, ved_path: str, only_if_missing: bool, save: bool):
-        """
-        Auto-fill dd2/fmu/out with the same stem in the same directory as the selected .ved.
+    def _select_output_dir(self):
+        initdir = self.output_dir_path or self._cfg.get("last_dir") or None
+        path = filedialog.askdirectory(initialdir=initdir)
+        if not path:
+            return
+        self._set_path("output_dir_path", path, save=True)
 
-        Noise policy (v9):
-        - Missing candidates are logged as INFO (log_message), not CAUTION.
-        Safety policy:
-        - When selecting a new .ved (only_if_missing=False), missing companion files clear previous selections
-          to avoid accidental cross-file analysis.
-        """
+    def _auto_fill_related_files(self, ved_path: str, only_if_missing: bool, save: bool):
         p = Path(ved_path)
         if not p.exists():
             return
@@ -1707,10 +1940,9 @@ class App(tk.Tk):
         cand = {
             "dd2_path": p.with_suffix(".dd2"),
             "fmu_path": p.with_suffix(".fmu"),
-            "out_path": None,  # handled below (.out or .log)
+            "out_path": None,
         }
 
-        # Prefer same-stem .out; fallback to .log (Gaussian) when .out is absent.
         out_cand = p.with_suffix(".out")
         log_cand = p.with_suffix(".log")
         if out_cand.exists():
@@ -1718,22 +1950,21 @@ class App(tk.Tk):
         elif log_cand.exists():
             cand["out_path"] = log_cand
         else:
-            cand["out_path"] = out_cand  # keep .out as the canonical name for messages
+            cand["out_path"] = out_cand
 
-        missing: List[str] = []
         filled: List[str] = []
+        missing: List[str] = []
 
         for attr, fp in cand.items():
             if only_if_missing and getattr(self, attr, None):
                 continue
-
-            if fp.is_file():
+            if fp and fp.is_file():
                 self._set_path(attr, str(fp), save=False)
                 filled.append(fp.name)
             else:
-                missing.append(fp.name)
+                if fp:
+                    missing.append(fp.name)
                 if not only_if_missing:
-                    # Clear to avoid accidentally reusing old companion files.
                     self._set_path(attr, None, save=False)
 
         if filled:
@@ -1744,249 +1975,795 @@ class App(tk.Tk):
         if save:
             self._save_current_config()
 
-    def run(self):
+    # -----------------------------
+    # Precheck and coordinate table
+    # -----------------------------
+
+    def _set_text(self, widget, text: str):
+        widget.delete("1.0", "end")
+        widget.insert("1.0", text)
+
+    def precheck(self):
         if not (self.ved_path and self.dd2_path and self.out_path):
-            messagebox.showwarning("Missing Files", "Required files: .ved, .dd2, QC output (.out/.log). FMU is optional; if omitted, atom labels are taken from the QC output when possible.")
+            messagebox.showwarning("Missing Files", "Required files: .ved, .dd2, QC output (.out/.log).")
             return
 
-        cautions_for_gui: List[str] = []
-
         try:
-            self.status_lbl.config(text="Processing...", fg="blue")
+            self.status_lbl.config(text="Prechecking...", fg="blue")
             self.update()
 
-            # 1) Parse .ved (PED is required)
-            freqs_ved, ted_blk, ped_blk = parse_ved_freqs_and_matrices(Path(self.ved_path))
-            if not ped_blk:
-                raise ValueError("No PED matrix found in .ved file (see log for details).")
+            freqs_ved, ted_blk, ped_blks = parse_ved_freqs_and_matrices(Path(self.ved_path))
+            if not ped_blks:
+                raise ValueError("No PED matrix found in .ved file.")
 
-            if not freqs_ved:
-                cautions_for_gui.append("VEDA frequencies could not be extracted (ORCA↔VEDA mapping skipped).")
-
-            # 2) Parse dd2
             dd2_data = parse_dd2(self.dd2_path)
             coords = dd2_data.get("coords", []) or []
             if not coords:
-                log_caution("dd2 coords are empty. PED labels may become UNKNOWN.")
-                cautions_for_gui.append("dd2 contains no coordinates (PED labels may become UNKNOWN).")
+                log_caution("dd2 coords are empty. Coordinate labels may become UNKNOWN.")
 
-            # 3) Atom map (for lookup CSV + simplified labels)
+            available_codes = sorted(list(set((c.get("coord_code") or "").lower() for c in coords if c.get("coord_code"))))
+            if not available_codes:
+                available_codes = ["s"]
+
             atom_map: Dict[int, str] = {}
             if self.fmu_path:
                 atom_map = parse_atom_map_from_fmu(self.fmu_path)
-            if not atom_map:
-                log_caution("Atom map could not be built from FMU. Will try QC output geometry for labeling.")
 
-            # 4) QC parse (ORCA or Gaussian; required)
             try:
                 out_text = Path(self.out_path).read_text(encoding="utf-8", errors="replace")
             except Exception as e:
-                log_caution(f"Failed to read ORCA .out: {self.out_path}")
-                log_error("run read out", e)
+                log_caution(f"Failed to read QC output: {self.out_path}")
+                log_error("precheck read out", e)
                 out_text = ""
-
             if not out_text:
-                raise ValueError("QC output file could not be read (empty).")
+                raise ValueError("QC output file could not be read or is empty.")
 
-            engine, orca_freq_data, orca_intensities, qc_atom_map = parse_qchem_output(out_text)
-            log_message(f"QC engine detected: {engine}")
-            if not orca_freq_data:
+            engine, qc_freq_data, qc_intensities, qc_atom_map = parse_qchem_output(out_text)
+            if not qc_freq_data:
                 raise ValueError(f"No vibrational frequency data parsed from QC output (engine={engine}).")
 
             if not atom_map:
-                atom_map = parse_atom_map_from_orca_out(out_text)
+                atom_map = qc_atom_map or {}
+            if not atom_map:
+                log_caution("Atom map could not be built from FMU or QC output.")
 
+            veda_to_qc, qc_to_veda, map_stats = build_veda_orca_mode_maps(freqs_ved, qc_freq_data, orca_intensities=qc_intensities, tol_cm1=5.0)
 
-            # 5) Mode mapping (frequency-based 1:1 alignment)
-            tol_map = 5.0
-            veda_to_orca, _, map_stats = build_veda_orca_mode_maps(freqs_ved, orca_freq_data, orca_intensities=orca_intensities, tol_cm1=tol_map)
-            if map_stats.get("max_abs_diff") is not None and map_stats["max_abs_diff"] > tol_map:
-                cautions_for_gui.append(f"Some ORCA↔VEDA matches have large |Δfreq| (max={map_stats['max_abs_diff']:.2f})")
-            if freqs_ved and map_stats.get("n_matched", 0) == 0:
-                cautions_for_gui.append("Failed to match ORCA↔VEDA modes (mode_orca etc. will be blank).")
+            self.analysis_ctx = {
+                "freqs_ved": freqs_ved,
+                "ted_block": ted_blk,
+                "ped_blocks": ped_blks,
+                "coords": coords,
+                "available_codes": available_codes,
+                "atom_map": atom_map,
+                "engine": engine,
+                "qc_freq_data": qc_freq_data,
+                "qc_intensities": qc_intensities,
+                "qc_atom_map": qc_atom_map,
+                "veda_to_qc": veda_to_qc,
+                "qc_to_veda": qc_to_veda,
+                "map_stats": map_stats,
+            }
 
-            # 6) PED row renormalization
-            ped_mat_norm, sums, notes = _ped_percent_matrix_with_check(ped_blk["matrix"])
+            self.coordinate_rows = self._make_coordinate_rows(coords, atom_map)
+            self._update_filter_choices()
+            self.refresh_coordinate_table()
+            self.refresh_target_preview()
 
-            # 7) PED columns ↔ dd2 mapping (use VEDA column IDs if present)
-            ped_col_ids: List[int] = ped_blk.get("col_ids", []) or []
-            if not ped_col_ids:
-                # Defensive fallback
-                ped_col_ids = list(range(1, int(ped_blk.get("n_cols", 0)) + 1))
-                log_caution("PED column IDs missing; falling back to sequential numbering.")
-
-            colpos_to_info, colmap_cautions = build_ped_column_coord_map(ped_col_ids, coords)
-            for c in colmap_cautions:
-                log_caution(c)
-            if colmap_cautions:
-                cautions_for_gui.append("Potential PED column ↔ dd2(coord_id) mismatch detected (see log).")
-
-            # 8) Build DataFrame
-            rows: List[dict] = []
-            for i, row in enumerate(ped_mat_norm):
-                v_mode = i + 1
-
-                v_freq = 0.0
-                if freqs_ved and i < len(freqs_ved):
-                    try:
-                        v_freq = float(freqs_ved[i])
-                    except Exception:
-                        v_freq = 0.0
-
-                o_mode = veda_to_orca.get(v_mode) if veda_to_orca else None
-
-                o_freq = 0.0
-                o_irrep = ""
-                o_int = 0.0
-
-                caution_msgs: List[str] = []
-                if not freqs_ved:
-                    caution_msgs.append("VEDA frequency unavailable")
-
-                if o_mode is None:
-                    caution_msgs.append("ORCA mode not matched")
-                else:
-                    fd = orca_freq_data.get(o_mode)
-                    if fd:
-                        try:
-                            o_freq = float(fd.get("freq", 0.0))
-                        except Exception:
-                            o_freq = 0.0
-                        o_irrep = fd.get("irrep", "") or ""
-                    else:
-                        caution_msgs.append("ORCA frequency unavailable")
-
-                    try:
-                        o_int = float(orca_intensities.get(o_mode, 0.0))
-                    except Exception:
-                        o_int = 0.0
-
-                    if v_freq and o_freq:
-                        absd = abs(o_freq - v_freq)
-                        if absd > tol_map:
-                            caution_msgs.append(f"|Δfreq|={absd:.2f}>tol({tol_map:.2f})")
-
-                contribs: List[Tuple[float, int]] = []
-                for col_idx_0, val in enumerate(row):
-                    col_pos = col_idx_0 + 1
-                    contribs.append((float(val), col_pos))
-                contribs.sort(key=lambda x: x[0], reverse=True)
-
-                delta_freq = None
-                abs_delta_freq = None
-                if o_mode is not None and v_freq and o_freq:
-                    delta_freq = o_freq - v_freq
-                    abs_delta_freq = abs(delta_freq)
-
-                entry = {
-                    "mode_veda": v_mode,
-                    "mode_orca": o_mode if o_mode else "",
-                    "freq_veda": v_freq,
-                    "freq_orca": o_freq,
-                    "delta_freq": delta_freq,
-                    "abs_delta_freq": abs_delta_freq,
-                    "irrep": o_irrep,
-                    "IR_intensity": o_int,
-                    "ped_sum": sums[i] if i < len(sums) else "",
-                    "note": notes[i] if i < len(notes) else "",
-                }
-
-                rank_out = 0
-                unknown_in_top = 0
-                for val, col_pos in contribs:
-                    if rank_out >= 6:
-                        break
-                    if val < 0.1:
-                        break
-
-                    info = colpos_to_info.get(col_pos, {"ped_col": col_pos, "coord_id": col_pos, "coord_code": "", "coord": None})
-                    coord_id = info.get("coord_id", col_pos)
-                    coord_code = info.get("coord_code", "") or ""
-                    c_obj = info.get("coord")
-
-                    if c_obj is None:
-                        unknown_in_top += 1
-                        lbl_body = "UNKNOWN"
-                    else:
-                        grp = c_obj.get("coord_group", "") or ""
-                        grp_u = grp.upper()
-                        ats = c_obj.get("atoms", []) or []
-                        raw = c_obj.get("coord_label_raw", "") or ""
-
-                        at_syms = [atom_map.get(a, f"{a}") for a in ats]
-
-                        if grp_u.startswith("STRE") and len(ats) == 2:
-                            lbl_body = f"str({at_syms[0]}-{at_syms[1]})"
-                        elif grp_u.startswith("BEND") and len(ats) == 3:
-                            lbl_body = f"bend({at_syms[0]}-{at_syms[1]}-{at_syms[2]})"
-                        elif grp_u.startswith("TORS") and len(ats) == 4:
-                            lbl_body = f"tors({at_syms[0]}-{at_syms[1]}-{at_syms[2]}-{at_syms[3]})"
-                        else:
-                            lbl_body = f"{grp_u}({'-'.join(at_syms)})"
-
-                        if raw:
-                            lbl_body += f"[{raw}]"
-
-                    entry[f"PED{rank_out + 1}_col"] = int(col_pos)
-                    entry[f"PED{rank_out + 1}_coord_id"] = int(coord_id) if isinstance(coord_id, int) else coord_id
-                    entry[f"PED{rank_out + 1}_coord_code"] = coord_code
-                    entry[f"PED{rank_out + 1}_label"] = lbl_body
-                    entry[f"PED{rank_out + 1}_val"] = round(val, 1)
-
-                    rank_out += 1
-
-                if unknown_in_top:
-                    caution_msgs.append(f"UNKNOWN in top contributions({unknown_in_top})")
-
-                if entry.get("note"):
-                    caution_msgs.append("PED renormalized")
-
-                entry["caution"] = "; ".join(caution_msgs)
-
-                rows.append(entry)
-
-            df_ped = pd.DataFrame(rows)
-
-            cols = [
-                "mode_veda", "mode_orca",
-                "freq_veda", "freq_orca", "delta_freq", "abs_delta_freq",
-                "irrep", "IR_intensity",
-                "ped_sum", "note", "caution",
-            ]
-            for r in range(1, 7):
-                cols.extend([f"PED{r}_col", f"PED{r}_coord_id", f"PED{r}_coord_code", f"PED{r}_label", f"PED{r}_val"])
-            cols = [c for c in cols if c in df_ped.columns]
-            df_ped = df_ped[cols]
-
-            # Save paths
-            base = Path(self.ved_path)
-            save_path = str(base.with_name(base.stem + "_PED_table.csv"))
-            lookup_path = str(base.with_name(base.stem + "_coordinates_lookup.csv"))
-
-            df_ped.to_csv(save_path, index=False, encoding="utf-8-sig")
-            log_message(f"Saved PED CSV: {save_path}")
-
-            export_internal_coordinate_lookup_csv(self.dd2_path, lookup_path, fmu_path=self.fmu_path, atom_map=atom_map)
-
-            # Save config
+            ped_headers = [str(b.get("header", "PED")) for b in ped_blks]
+            lines = []
+            lines.append("Precheck OK")
+            lines.append(f"Program version      : {APP_VERSION} ({APP_RELEASE_DATE})")
+            lines.append(f"Repository           : {APP_REPOSITORY}")
+            lines.append("")
+            lines.append(f"VEDA modes           : {len(freqs_ved) if freqs_ved else 'not extracted'}")
+            lines.append(f"PED blocks           : {len(ped_blks)}")
+            for idx, h in enumerate(ped_headers, start=1):
+                lines.append(f"  block {idx}           : {h}")
+            lines.append(f"DD2 coordinates      : {len(coords)}")
+            lines.append(f"Coordinate codes     : {', '.join(available_codes)}")
+            lines.append(f"Atom map entries     : {len(atom_map)}")
+            lines.append(f"QC engine            : {engine}")
+            lines.append(f"QC modes             : {len(qc_freq_data)}")
+            lines.append(f"Mode mapping matched : {map_stats.get('n_matched', 0)} / VEDA {map_stats.get('n_veda', 0)} / QC {map_stats.get('n_orca', 0)}")
+            lines.append(f"Max abs freq diff    : {map_stats.get('max_abs_diff')}")
+            lines.append(f"Mean abs freq diff   : {map_stats.get('mean_abs_diff')}")
+            lines.append("")
+            lines.append("Next step: use Coordinate Browser or Target Definition to select internal coordinates.")
+            self._set_text(self.precheck_text, "\n".join(lines))
+            self.status_lbl.config(text="Precheck OK", fg="green")
             self._save_current_config()
 
-            self.status_lbl.config(text=f"Done! Saved: {Path(save_path).name}", fg="green")
+        except Exception as e:
+            self.status_lbl.config(text="Precheck error", fg="red")
+            log_caution("Precheck failed.")
+            log_error("precheck", e)
+            self._set_text(self.precheck_text, f"Precheck failed:\n{e}\n\nSee log: {_ensure_log_path()}")
+            messagebox.showerror("Precheck error", f"An error occurred:\n{str(e)}\n\nSee log:\n{_ensure_log_path()}")
 
-            msg = f"Analysis complete.\n\nSaved:\n1. {save_path}\n2. {lookup_path}\n\nLog:\n{_ensure_log_path()}"
+    def _make_coordinate_rows(self, coords: List[dict], atom_map: Dict[int, str]) -> List[dict]:
+        rows: List[dict] = []
+        for idx, c in enumerate(coords):
+            atoms = c.get("atoms", []) or []
+            rows.append({
+                "row_index": idx,
+                "coord_id": c.get("coord_id", ""),
+                "code": c.get("coord_code", ""),
+                "group": c.get("coord_group", ""),
+                "atoms": " ".join(str(a) for a in atoms),
+                "atom_label": _coord_atom_label(c, atom_map),
+                "label": _coord_label(c, atom_map),
+                "raw_label": c.get("coord_label_raw", "") or "",
+                "source_line": c.get("source_line", "") or "",
+                "coord": c,
+            })
+        return rows
+
+    def _update_filter_choices(self):
+        codes = sorted(set(str(r.get("code", "")).lower() for r in self.coordinate_rows if r.get("code")))
+        groups = sorted(set(str(r.get("group", "")) for r in self.coordinate_rows if r.get("group")))
+        self.filter_code_combo.configure(values=["(any)"] + codes)
+        self.filter_group_combo.configure(values=["(any)"] + groups)
+        if self.filter_code_var.get() not in (["(any)"] + codes):
+            self.filter_code_var.set("(any)")
+        if self.filter_group_var.get() not in (["(any)"] + groups):
+            self.filter_group_var.set("(any)")
+
+    def clear_coordinate_filters(self):
+        self.filter_code_var.set("(any)")
+        self.filter_group_var.set("(any)")
+        self.filter_atom_var.set("")
+        self.filter_element_var.set("")
+        self.filter_label_var.set("")
+        self.refresh_coordinate_table()
+
+    def refresh_coordinate_table(self):
+        if not hasattr(self, "coord_tree"):
+            return
+        for item in self.coord_tree.get_children():
+            self.coord_tree.delete(item)
+
+        if not self.coordinate_rows:
+            return
+
+        code_filter = self.filter_code_var.get().strip().lower()
+        group_filter = self.filter_group_var.get().strip()
+        atom_filter = set(_parse_int_list(self.filter_atom_var.get()))
+        element_filter = set(_parse_symbol_list(self.filter_element_var.get()))
+        label_filter = self.filter_label_var.get().strip().lower()
+        atom_map = (self.analysis_ctx or {}).get("atom_map", {}) if self.analysis_ctx else {}
+
+        n_show = 0
+        for i, r in enumerate(self.coordinate_rows):
+            if code_filter and code_filter != "(any)" and str(r.get("code", "")).lower() != code_filter:
+                continue
+            if group_filter and group_filter != "(any)" and str(r.get("group", "")) != group_filter:
+                continue
+            atoms = _parse_int_list(r.get("atoms", ""))
+            if atom_filter and not (set(atoms) & atom_filter):
+                continue
+            if element_filter:
+                els = set((atom_map.get(a, "") or "").capitalize() for a in atoms)
+                if not (els & element_filter):
+                    continue
+            if label_filter:
+                hay = " ".join(str(r.get(k, "")) for k in ("atom_label", "label", "raw_label", "source_line")).lower()
+                if label_filter not in hay:
+                    continue
+
+            vals = [r.get("coord_id", ""), r.get("code", ""), r.get("group", ""), r.get("atoms", ""), r.get("atom_label", ""), r.get("label", ""), r.get("raw_label", "")]
+            self.coord_tree.insert("", "end", iid=str(i), values=vals)
+            n_show += 1
+
+        self.status_lbl.config(text=f"Coordinate rows shown: {n_show}", fg="blue")
+
+    # -----------------------------
+    # Target coordinate helpers
+    # -----------------------------
+
+    def _get_target_ids_from_text(self) -> set:
+        return set(_parse_int_list(self.target_ids_text.get("1.0", "end")))
+
+    def normalize_target_ids_text(self):
+        ids = sorted(self._get_target_ids_from_text())
+        self.target_ids_text.delete("1.0", "end")
+        self.target_ids_text.insert("1.0", ", ".join(str(x) for x in ids))
+        self.refresh_target_preview()
+        self._save_current_config()
+
+    def clear_target_ids(self):
+        self.target_ids_text.delete("1.0", "end")
+        self.refresh_target_preview()
+        self._save_current_config()
+
+    def add_selected_coords_to_target(self):
+        if not self.coordinate_rows:
+            messagebox.showwarning("No coordinates", "Run Load / Precheck first.")
+            return
+        selected = self.coord_tree.selection()
+        if not selected:
+            messagebox.showinfo("No selection", "Select rows in the coordinate table first.")
+            return
+        ids = self._get_target_ids_from_text()
+        for iid in selected:
+            try:
+                row = self.coordinate_rows[int(iid)]
+                cid = row.get("coord_id")
+                if isinstance(cid, int):
+                    ids.add(cid)
+                else:
+                    ids.add(int(cid))
+            except Exception:
+                continue
+        self.target_ids_text.delete("1.0", "end")
+        self.target_ids_text.insert("1.0", ", ".join(str(x) for x in sorted(ids)))
+        self.refresh_target_preview()
+        self._save_current_config()
+
+    def _detect_target_ids_by_rule(self) -> set:
+        if not self.analysis_ctx:
+            return set()
+        atom_map = self.analysis_ctx.get("atom_map", {}) or {}
+        metal_atoms = _parse_int_list(self.metal_atoms_var.get())
+        ligand_atoms = _parse_int_list(self.ligand_atoms_var.get())
+        ligand_elements = _parse_symbol_list(self.ligand_elements_var.get())
+        ids = set()
+        for c in self.analysis_ctx.get("coords", []) or []:
+            if _coord_matches_metal_ligand_stretch(c, atom_map, metal_atoms, ligand_atoms, ligand_elements):
+                cid = c.get("coord_id")
+                if isinstance(cid, int):
+                    ids.add(cid)
+        return ids
+
+    def _get_effective_target_ids(self) -> set:
+        ids = self._get_target_ids_from_text()
+        if not ids and bool(self.use_rule_if_empty_var.get()):
+            ids = self._detect_target_ids_by_rule()
+        return ids
+
+    def auto_detect_target_coords(self):
+        if not self.analysis_ctx:
+            self.precheck()
+            if not self.analysis_ctx:
+                return
+        ids = sorted(self._detect_target_ids_by_rule())
+        self.target_ids_text.delete("1.0", "end")
+        self.target_ids_text.insert("1.0", ", ".join(str(x) for x in ids))
+        self.refresh_target_preview()
+        self._save_current_config()
+        messagebox.showinfo("Auto-detect", f"Detected {len(ids)} target coordinate IDs.")
+
+    def refresh_target_preview(self):
+        if not hasattr(self, "target_tree"):
+            return
+        ids = self._get_effective_target_ids()
+        rows = []
+        for r in self.coordinate_rows:
+            try:
+                cid = int(r.get("coord_id"))
+            except Exception:
+                continue
+            if cid in ids:
+                rows.append({
+                    "coord_id": cid,
+                    "code": r.get("code", ""),
+                    "group": r.get("group", ""),
+                    "atom_label": r.get("atom_label", ""),
+                    "label": r.get("label", ""),
+                })
+        df = pd.DataFrame(rows)
+        self._populate_tree(self.target_tree, df, max_rows=300)
+
+    # -----------------------------
+    # Analysis helpers
+    # -----------------------------
+
+    def _configure_generic_tree(self, tree: ttk.Treeview, cols: List[str]):
+        tree["columns"] = cols
+        tree["show"] = "headings"
+        for c in cols:
+            tree.heading(c, text=c)
+            tree.column(c, width=max(80, min(260, 10 * len(c) + 60)), anchor="w")
+
+    def _populate_tree(self, tree: ttk.Treeview, df: pd.DataFrame, max_rows: int = 300):
+        for item in tree.get_children():
+            tree.delete(item)
+        if df is None or df.empty:
+            self._configure_generic_tree(tree, [])
+            return
+        cols = list(df.columns)
+        self._configure_generic_tree(tree, cols)
+        for _, row in df.head(max_rows).iterrows():
+            vals = []
+            for c in cols:
+                v = row.get(c, "")
+                if isinstance(v, float):
+                    if math.isnan(v):
+                        vals.append("")
+                    else:
+                        vals.append(f"{v:.6g}")
+                else:
+                    vals.append("" if v is None else str(v))
+            tree.insert("", "end", values=vals)
+
+    def _output_path(self, base: Path, suffix: str) -> str:
+        out_dir = Path(self.output_dir_path) if self.output_dir_path else base.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        return str(out_dir / (base.stem + suffix))
+
+    def _get_options(self) -> dict:
+        def int_opt(var, default):
+            try:
+                return max(1, int(float(str(var.get()).strip())))
+            except Exception:
+                return default
+
+        def float_opt(var, default):
+            try:
+                return float(safe_float(str(var.get()).strip()))
+            except Exception:
+                return default
+
+        return {
+            "top_n": int_opt(self.top_n_var, DEFAULT_TOP_N_TERMS),
+            "standard_min_ped": float_opt(self.standard_min_ped_var, DEFAULT_LONG_MIN_PED),
+            "long_min_ped": float_opt(self.long_min_ped_var, DEFAULT_LONG_MIN_PED),
+            "target_min_ped": float_opt(self.target_min_ped_var, DEFAULT_TARGET_MIN_PED),
+            "target_total_min_ped": float_opt(self.target_total_min_ped_var, DEFAULT_TARGET_TOTAL_PED),
+            "freq_min": _parse_optional_float(self.freq_min_var.get()),
+            "freq_max": _parse_optional_float(self.freq_max_var.get()),
+            "target_name": self.target_name_var.get().strip() or "target",
+            "output_standard": bool(self.output_standard_var.get()),
+            "output_long": bool(self.output_long_var.get()),
+            "output_target_hits": bool(self.output_target_hits_var.get()),
+            "output_summary_mode": bool(self.output_summary_mode_var.get()),
+            "output_summary_coord": bool(self.output_summary_coord_var.get()),
+            "output_target_matrix": bool(self.output_target_matrix_var.get()),
+            "include_alternative": bool(self.include_alternative_var.get()),
+            "include_all_target_modes": bool(self.include_all_target_modes_var.get()),
+        }
+
+    def _mode_meta(self, ctx: dict, v_mode: int, row_index: int) -> Tuple[dict, List[str]]:
+        freqs_ved = ctx.get("freqs_ved", []) or []
+        qc_freq_data = ctx.get("qc_freq_data", {}) or {}
+        qc_intensities = ctx.get("qc_intensities", {}) or {}
+        veda_to_qc = ctx.get("veda_to_qc", {}) or {}
+        caution_msgs: List[str] = []
+
+        v_freq = 0.0
+        if freqs_ved and row_index < len(freqs_ved):
+            try:
+                v_freq = float(freqs_ved[row_index])
+            except Exception:
+                v_freq = 0.0
+        else:
+            caution_msgs.append("VEDA frequency unavailable")
+
+        q_mode = veda_to_qc.get(v_mode) if veda_to_qc else None
+        q_freq = 0.0
+        q_irrep = ""
+        q_int = 0.0
+        delta_freq = None
+        abs_delta_freq = None
+
+        if q_mode is None:
+            caution_msgs.append("QC mode not matched")
+        else:
+            fd = qc_freq_data.get(q_mode)
+            if fd:
+                try:
+                    q_freq = float(fd.get("freq", 0.0))
+                except Exception:
+                    q_freq = 0.0
+                q_irrep = fd.get("irrep", "") or ""
+            else:
+                caution_msgs.append("QC frequency unavailable")
+            try:
+                q_int = float(qc_intensities.get(q_mode, 0.0))
+            except Exception:
+                q_int = 0.0
+            if v_freq and q_freq:
+                delta_freq = q_freq - v_freq
+                abs_delta_freq = abs(delta_freq)
+                if abs_delta_freq > 5.0:
+                    caution_msgs.append(f"abs_freq_diff={abs_delta_freq:.2f}>5.00")
+
+        meta = {
+            "mode_veda": v_mode,
+            "mode_qc": q_mode if q_mode else "",
+            "freq_veda": v_freq,
+            "freq_qc": q_freq,
+            "delta_freq": delta_freq,
+            "abs_delta_freq": abs_delta_freq,
+            "irrep": q_irrep,
+            "IR_intensity": q_int,
+        }
+        return meta, caution_msgs
+
+    def _coord_info_from_col(self, colpos_to_info: Dict[int, dict], col_pos: int, atom_map: Dict[int, str]) -> dict:
+        info = colpos_to_info.get(col_pos, {"ped_col": col_pos, "coord_id": col_pos, "coord_code": "", "coord": None})
+        c_obj = info.get("coord")
+        cid = info.get("coord_id", col_pos)
+        return {
+            "ped_col": col_pos,
+            "coord_id": cid,
+            "coord_code": info.get("coord_code", "") or _coord_code(c_obj),
+            "coord_group": _coord_group(c_obj),
+            "atoms": " ".join(str(a) for a in ((c_obj or {}).get("atoms", []) or [])),
+            "atom_label": _coord_atom_label(c_obj, atom_map),
+            "label": _coord_label(c_obj, atom_map),
+            "coord": c_obj,
+        }
+
+    # -----------------------------
+    # Main run
+    # -----------------------------
+
+    def run(self):
+        if not self.analysis_ctx:
+            self.precheck()
+            if not self.analysis_ctx:
+                return
+
+        ctx = self.analysis_ctx
+        opts = self._get_options()
+        if not any(opts[k] for k in ("output_standard", "output_long", "output_target_hits", "output_summary_mode", "output_summary_coord", "output_target_matrix")):
+            messagebox.showwarning("No output", "Select at least one output option.")
+            return
+
+        target_ids = self._get_effective_target_ids()
+        if not target_ids and any(opts[k] for k in ("output_target_hits", "output_summary_mode", "output_summary_coord", "output_target_matrix")):
+            messagebox.showwarning("No target coordinates", "No target coordinate IDs were selected or detected. Target outputs will be empty.")
+
+        try:
+            self.status_lbl.config(text="Running target analysis...", fg="blue")
+            self.update()
+
+            base = Path(self.ved_path)
+            atom_map = ctx.get("atom_map", {}) or {}
+            available_codes_all = ctx.get("available_codes", ["s"]) or ["s"]
+            ped_blocks_all = ctx.get("ped_blocks", []) or []
+            coords = ctx.get("coords", []) or []
+
+            if opts.get("include_alternative"):
+                available_codes = list(available_codes_all)
+                ped_blocks = list(ped_blocks_all)
+            else:
+                available_codes = [c for c in available_codes_all if str(c).lower() == "s"]
+                if not available_codes:
+                    available_codes = [available_codes_all[0]]
+                    log_caution("Standard coordinate code 's' was not found; using the first available DD2 coordinate code.")
+
+                ped_blocks = [
+                    b for b in ped_blocks_all
+                    if str(b.get("target_code", "s")).lower() == "s"
+                    and "ALTERNATIVE" not in str(b.get("header", "")).upper()
+                ]
+                if not ped_blocks and ped_blocks_all:
+                    ped_blocks = [ped_blocks_all[0]]
+                    log_caution("Standard PED block was not found; using the first available PED block.")
+
+            saved_files: List[str] = []
+            preview_summary_mode: List[pd.DataFrame] = []
+            preview_hits: List[pd.DataFrame] = []
+            preview_summary_coord: List[pd.DataFrame] = []
+
+            for p_idx, ped_blk in enumerate(ped_blocks):
+                header_str = ped_blk.get("header", "PED")
+                ped_mat_norm, sums, notes = _ped_percent_matrix_with_check(ped_blk.get("matrix", []))
+                ped_col_ids: List[int] = ped_blk.get("col_ids", []) or []
+                if not ped_col_ids:
+                    ped_col_ids = list(range(1, int(ped_blk.get("n_cols", 0)) + 1))
+                    log_caution(f"[{header_str}] PED column IDs missing; falling back to sequential numbering.")
+
+                block_suffix = "" if len(ped_blocks) == 1 else f"_block{p_idx + 1}"
+
+                for code in available_codes:
+                    code_label = _code_output_label(code)
+                    colpos_to_info, colmap_cautions = build_ped_column_coord_map(ped_col_ids, coords, target_code=code)
+                    for c in colmap_cautions:
+                        log_caution(f"[{header_str} - {code.upper()} interpretation] {c}")
+
+                    standard_rows: List[dict] = []
+                    long_rows: List[dict] = []
+                    target_hits: List[dict] = []
+                    summary_mode_rows: List[dict] = []
+                    matrix_rows: List[dict] = []
+                    coord_acc: Dict[int, dict] = {}
+
+                    for row_index, row in enumerate(ped_mat_norm):
+                        v_mode = row_index + 1
+                        meta, base_cautions = self._mode_meta(ctx, v_mode, row_index)
+                        freq_for_filter = float(meta.get("freq_qc") or meta.get("freq_veda") or 0.0)
+                        mode_in_range = _freq_in_range(freq_for_filter, opts["freq_min"], opts["freq_max"])
+
+                        contribs: List[Tuple[float, int]] = []
+                        for col_idx_0, val in enumerate(row):
+                            col_pos = col_idx_0 + 1
+                            contribs.append((float(val), col_pos))
+                        contribs.sort(key=lambda x: x[0], reverse=True)
+
+                        cumulative = 0.0
+                        target_total = 0.0
+                        target_max = 0.0
+                        best_target_rank = ""
+                        target_terms_for_mode: List[Tuple[float, int, str, int]] = []
+                        target_coords_detected = set()
+                        matrix_entry = {
+                            "target_set_name": opts["target_name"],
+                            "interpretation": code_label,
+                            "ped_block": header_str,
+                            **meta,
+                        }
+
+                        standard_entry = {
+                            **meta,
+                            "interpretation": code_label,
+                            "ped_block": header_str,
+                            "ped_sum": sums[row_index] if row_index < len(sums) else "",
+                            "note": notes[row_index] if row_index < len(notes) else "",
+                        }
+
+                        for rank, (val, col_pos) in enumerate(contribs, start=1):
+                            cumulative += val
+                            cinfo = self._coord_info_from_col(colpos_to_info, col_pos, atom_map)
+                            cid_raw = cinfo.get("coord_id", "")
+                            try:
+                                cid_int = int(cid_raw)
+                            except Exception:
+                                cid_int = -1
+                            is_target = cid_int in target_ids
+
+                            if opts["output_long"] and (val >= opts["long_min_ped"] or (is_target and val > 1.0e-12)):
+                                long_rows.append({
+                                    "interpretation": code_label,
+                                    "ped_block": header_str,
+                                    **meta,
+                                    "PED_rank": rank,
+                                    "PED_value": round(val, 6),
+                                    "cumulative_PED": round(cumulative, 6),
+                                    "is_target": bool(is_target),
+                                    "target_set_name": opts["target_name"] if is_target else "",
+                                    **{k: cinfo.get(k, "") for k in ("ped_col", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
+                                })
+
+                            if is_target:
+                                target_total += val
+                                if val > target_max:
+                                    target_max = val
+                                if best_target_rank == "":
+                                    best_target_rank = rank
+                                matrix_entry[f"coord_{cid_int}"] = round(val, 6)
+                                if val >= opts["target_min_ped"]:
+                                    target_coords_detected.add(cid_int)
+                                    target_terms_for_mode.append((val, rank, cinfo.get("label", ""), cid_int))
+                                    if mode_in_range and opts["output_target_hits"]:
+                                        target_hits.append({
+                                            "target_set_name": opts["target_name"],
+                                            "interpretation": code_label,
+                                            "ped_block": header_str,
+                                            **meta,
+                                            "PED_rank": rank,
+                                            "PED_value": round(val, 6),
+                                            "cumulative_PED": round(cumulative, 6),
+                                            **{k: cinfo.get(k, "") for k in ("ped_col", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
+                                        })
+                                    if mode_in_range:
+                                        acc = coord_acc.setdefault(cid_int, {
+                                            "target_set_name": opts["target_name"],
+                                            "interpretation": code_label,
+                                            "ped_block": header_str,
+                                            "coord_id": cid_int,
+                                            "coord_code": cinfo.get("coord_code", ""),
+                                            "coord_group": cinfo.get("coord_group", ""),
+                                            "atoms": cinfo.get("atoms", ""),
+                                            "atom_label": cinfo.get("atom_label", ""),
+                                            "label": cinfo.get("label", ""),
+                                            "sum_PED_in_range": 0.0,
+                                            "max_PED": 0.0,
+                                            "mode_qc_at_max": "",
+                                            "mode_veda_at_max": "",
+                                            "freq_qc_at_max": 0.0,
+                                            "freq_veda_at_max": 0.0,
+                                            "weight_freq_sum": 0.0,
+                                            "weight_sum": 0.0,
+                                            "mode_terms": [],
+                                        })
+                                        acc["sum_PED_in_range"] += val
+                                        acc["weight_freq_sum"] += val * freq_for_filter
+                                        acc["weight_sum"] += val
+                                        acc["mode_terms"].append((val, meta.get("mode_qc", ""), meta.get("mode_veda", ""), freq_for_filter, rank))
+                                        if val > acc["max_PED"]:
+                                            acc["max_PED"] = val
+                                            acc["mode_qc_at_max"] = meta.get("mode_qc", "")
+                                            acc["mode_veda_at_max"] = meta.get("mode_veda", "")
+                                            acc["freq_qc_at_max"] = meta.get("freq_qc", 0.0)
+                                            acc["freq_veda_at_max"] = meta.get("freq_veda", 0.0)
+
+                        target_terms_for_mode.sort(key=lambda x: x[0], reverse=True)
+                        top_target_terms = "; ".join(
+                            f"{label}={val:.1f}% (rank {rank})" for val, rank, label, cid in target_terms_for_mode[:8]
+                        )
+
+                        standard_entry["target_set_name"] = opts["target_name"] if target_ids else ""
+                        standard_entry["total_target_PED"] = round(target_total, 6) if target_ids else ""
+                        standard_entry["max_target_PED"] = round(target_max, 6) if target_ids else ""
+                        standard_entry["best_target_rank"] = best_target_rank
+                        standard_entry["top_target_terms"] = top_target_terms
+
+                        caution_msgs = list(base_cautions)
+                        if standard_entry.get("note"):
+                            caution_msgs.append("PED renormalized")
+
+                        rank_out = 0
+                        unknown_in_top = 0
+                        for val, col_pos in contribs:
+                            if rank_out >= opts["top_n"]:
+                                break
+                            if val < opts["standard_min_ped"]:
+                                break
+                            cinfo = self._coord_info_from_col(colpos_to_info, col_pos, atom_map)
+                            if cinfo.get("label") == "UNKNOWN":
+                                unknown_in_top += 1
+                            rnum = rank_out + 1
+                            standard_entry[f"PED{rnum}_col"] = int(col_pos)
+                            standard_entry[f"PED{rnum}_coord_id"] = cinfo.get("coord_id", "")
+                            standard_entry[f"PED{rnum}_coord_code"] = cinfo.get("coord_code", "")
+                            standard_entry[f"PED{rnum}_label"] = cinfo.get("label", "")
+                            standard_entry[f"PED{rnum}_val"] = round(val, 1)
+                            rank_out += 1
+
+                        if unknown_in_top:
+                            caution_msgs.append(f"UNKNOWN in top contributions({unknown_in_top})")
+                        standard_entry["caution"] = "; ".join(caution_msgs)
+                        standard_rows.append(standard_entry)
+
+                        if target_ids and mode_in_range:
+                            if opts["include_all_target_modes"] or target_total >= opts["target_total_min_ped"]:
+                                summary_mode_rows.append({
+                                    "target_set_name": opts["target_name"],
+                                    "interpretation": code_label,
+                                    "ped_block": header_str,
+                                    **meta,
+                                    "total_target_PED": round(target_total, 6),
+                                    "max_target_PED": round(target_max, 6),
+                                    "n_target_coords_detected": len(target_coords_detected),
+                                    "best_target_rank": best_target_rank,
+                                    "top_target_terms": top_target_terms,
+                                })
+                                if opts["output_target_matrix"]:
+                                    matrix_entry["total_target_PED"] = round(target_total, 6)
+                                    matrix_entry["max_target_PED"] = round(target_max, 6)
+                                    matrix_entry["best_target_rank"] = best_target_rank
+                                    matrix_rows.append(matrix_entry)
+
+                    summary_coord_rows: List[dict] = []
+                    for cid, acc in sorted(coord_acc.items(), key=lambda kv: kv[0]):
+                        terms = sorted(acc.get("mode_terms", []), key=lambda x: x[0], reverse=True)
+                        top_modes = "; ".join(
+                            f"QC{mq or ''}/V{mv}@{fr:.1f}:{val:.1f}% (rank {rk})" for val, mq, mv, fr, rk in terms[:10]
+                        )
+                        weight_sum = acc.get("weight_sum", 0.0) or 0.0
+                        weighted_mean_freq = (acc.get("weight_freq_sum", 0.0) / weight_sum) if weight_sum > 0 else ""
+                        summary_coord_rows.append({
+                            "target_set_name": acc.get("target_set_name", ""),
+                            "interpretation": acc.get("interpretation", ""),
+                            "ped_block": acc.get("ped_block", ""),
+                            "coord_id": cid,
+                            "coord_code": acc.get("coord_code", ""),
+                            "coord_group": acc.get("coord_group", ""),
+                            "atoms": acc.get("atoms", ""),
+                            "atom_label": acc.get("atom_label", ""),
+                            "label": acc.get("label", ""),
+                            "max_PED": round(acc.get("max_PED", 0.0), 6),
+                            "mode_qc_at_max": acc.get("mode_qc_at_max", ""),
+                            "mode_veda_at_max": acc.get("mode_veda_at_max", ""),
+                            "freq_qc_at_max": acc.get("freq_qc_at_max", 0.0),
+                            "freq_veda_at_max": acc.get("freq_veda_at_max", 0.0),
+                            "sum_PED_in_range": round(acc.get("sum_PED_in_range", 0.0), 6),
+                            "weighted_mean_freq": weighted_mean_freq,
+                            "n_modes_detected": len(terms),
+                            "top_modes": top_modes,
+                        })
+
+                    # Standard table column order
+                    if opts["output_standard"]:
+                        df_standard = pd.DataFrame(standard_rows)
+                        core_cols = [
+                            "interpretation", "ped_block", "mode_veda", "mode_qc", "freq_veda", "freq_qc",
+                            "delta_freq", "abs_delta_freq", "irrep", "IR_intensity", "ped_sum", "note",
+                            "target_set_name", "total_target_PED", "max_target_PED", "best_target_rank", "top_target_terms", "caution",
+                        ]
+                        top_cols: List[str] = []
+                        for r in range(1, opts["top_n"] + 1):
+                            top_cols.extend([f"PED{r}_col", f"PED{r}_coord_id", f"PED{r}_coord_code", f"PED{r}_label", f"PED{r}_val"])
+                        ordered = [c for c in core_cols + top_cols if c in df_standard.columns]
+                        df_standard = df_standard[ordered]
+                        save_path = self._output_path(base, f"_PED_table_{code_label}{block_suffix}.csv")
+                        df_standard.to_csv(save_path, index=False, encoding="utf-8-sig")
+                        saved_files.append(save_path)
+                        log_message(f"Saved standard PED table: {save_path}")
+
+                    if opts["output_long"]:
+                        df_long = pd.DataFrame(long_rows)
+                        save_path = self._output_path(base, f"_PED_terms_long_{code_label}{block_suffix}.csv")
+                        df_long.to_csv(save_path, index=False, encoding="utf-8-sig")
+                        saved_files.append(save_path)
+                        log_message(f"Saved long PED table: {save_path}")
+
+                    if opts["output_target_hits"]:
+                        df_hits = pd.DataFrame(target_hits)
+                        save_path = self._output_path(base, f"_target_hits_{code_label}{block_suffix}.csv")
+                        df_hits.to_csv(save_path, index=False, encoding="utf-8-sig")
+                        saved_files.append(save_path)
+                        log_message(f"Saved target hits: {save_path}")
+                        preview_hits.append(df_hits)
+
+                    if opts["output_summary_mode"]:
+                        df_sum_mode = pd.DataFrame(summary_mode_rows)
+                        if not df_sum_mode.empty:
+                            df_sum_mode = df_sum_mode.sort_values(["total_target_PED", "freq_qc"], ascending=[False, True])
+                        save_path = self._output_path(base, f"_target_summary_by_mode_{code_label}{block_suffix}.csv")
+                        df_sum_mode.to_csv(save_path, index=False, encoding="utf-8-sig")
+                        saved_files.append(save_path)
+                        log_message(f"Saved target summary by mode: {save_path}")
+                        preview_summary_mode.append(df_sum_mode)
+
+                    if opts["output_summary_coord"]:
+                        df_sum_coord = pd.DataFrame(summary_coord_rows)
+                        if not df_sum_coord.empty:
+                            df_sum_coord = df_sum_coord.sort_values(["sum_PED_in_range", "max_PED"], ascending=[False, False])
+                        save_path = self._output_path(base, f"_target_summary_by_coord_{code_label}{block_suffix}.csv")
+                        df_sum_coord.to_csv(save_path, index=False, encoding="utf-8-sig")
+                        saved_files.append(save_path)
+                        log_message(f"Saved target summary by coordinate: {save_path}")
+                        preview_summary_coord.append(df_sum_coord)
+
+                    if opts["output_target_matrix"]:
+                        df_matrix = pd.DataFrame(matrix_rows)
+                        save_path = self._output_path(base, f"_target_matrix_{code_label}{block_suffix}.csv")
+                        df_matrix.to_csv(save_path, index=False, encoding="utf-8-sig")
+                        saved_files.append(save_path)
+                        log_message(f"Saved target matrix: {save_path}")
+
+            lookup_path = self._output_path(base, "_coordinates_lookup.csv")
+            export_internal_coordinate_lookup_csv(self.dd2_path, lookup_path, fmu_path=self.fmu_path, atom_map=atom_map)
+            saved_files.append(lookup_path)
+
+            self._save_current_config()
+            self.status_lbl.config(text="Done", fg="green")
+
+            if preview_summary_mode:
+                self._preview_dfs["summary_by_mode"] = pd.concat(preview_summary_mode, ignore_index=True)
+            else:
+                self._preview_dfs["summary_by_mode"] = pd.DataFrame()
+            if preview_hits:
+                self._preview_dfs["hits"] = pd.concat(preview_hits, ignore_index=True)
+            else:
+                self._preview_dfs["hits"] = pd.DataFrame()
+            if preview_summary_coord:
+                self._preview_dfs["summary_by_coord"] = pd.concat(preview_summary_coord, ignore_index=True)
+            else:
+                self._preview_dfs["summary_by_coord"] = pd.DataFrame()
+
+            self._populate_tree(self.summary_mode_tree, self._preview_dfs["summary_by_mode"], max_rows=300)
+            self._populate_tree(self.hits_tree, self._preview_dfs["hits"], max_rows=300)
+            self._populate_tree(self.summary_coord_tree, self._preview_dfs["summary_by_coord"], max_rows=300)
+
+            msg_lines = ["Analysis complete.", "", "Saved files:"]
+            msg_lines.extend(f"- {Path(f).name}" for f in saved_files)
+            msg_lines.append("")
+            msg_lines.append(f"Log: {_ensure_log_path()}")
+            msg = "\n".join(msg_lines)
+            self._set_text(self.run_text, msg)
+            self._set_text(self.results_text, msg)
             messagebox.showinfo("Success", msg)
-
-            if cautions_for_gui:
-                messagebox.showwarning(
-                    "Caution",
-                    "Analysis completed, but there are cautions:\n\n- " + "\n- ".join(cautions_for_gui) +
-                    "\n\nSee the log (.log) for details."
-                )
 
         except Exception as e:
             self.status_lbl.config(text="Error occurred", fg="red")
-            log_caution("Run Analysis failed (see ERROR detail below).")
-            log_error("Run Analysis", e)
+            log_caution("Run Target Analysis failed.")
+            log_error("Run Target Analysis", e)
+            self._set_text(self.run_text, f"Run failed:\n{e}\n\nSee log: {_ensure_log_path()}")
             messagebox.showerror("Error", f"An error occurred:\n{str(e)}\n\nSee log:\n{_ensure_log_path()}")
 
 
