@@ -6,9 +6,8 @@ type: software
 authors:
   - family-names: Yamamoto
     given-names: Kaoru
-version: 1.1.0
-date-released: 2026-06-19
+version: 1.1.1
+date-released: 2026-06-22
 license: MIT
 repository-code: https://github.com/fatalfailure/veda_ped_analyzer
 url: https://github.com/fatalfailure/veda_ped_analyzer
-doi: 10.5281/zenodo.20759614

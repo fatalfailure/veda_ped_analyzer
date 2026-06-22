@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-veda_ped_analyzer (public release v1.1.0 - Target Coordinate Tracking)
+veda_ped_analyzer (v1.1.1 - Target Coordinate Tracking UI refinements)
 
 Purpose
 - Combine the PED (Potential Energy Distribution) matrix from a VEDA .ved file with
@@ -12,11 +12,9 @@ Purpose
   map ORCA modes to VEDA modes using a frequency-based 1:1 ordered alignment.
 - Support multi-interpretation export (STANDARD 's', ALTERNATIVE 'k', ALTERNATIVE2 'v') 
   to fully ensure alternative coordinate sets are captured and accurately labeled.
-- Add coordinate-centered target tracking for metal-ligand stretches and other selected internal coordinates.
+- Add coordinate-centered target tracking for selected internal coordinates.
+- Provide optional helper detection for metal-ligand stretching coordinates without making it the default workflow.
 - Export long PED tables, target hits, target summaries by mode/coordinate, and target matrices.
-
-Repository
-- https://github.com/fatalfailure/veda_ped_analyzer
 """
 
 from __future__ import annotations
@@ -44,10 +42,9 @@ from tkinter import ttk
 # ------------------------------------------------------------
 
 APP_NAME = "veda_ped_analyzer"
-APP_VERSION = "1.1.0"
-APP_RELEASE_DATE = "2026-06-19"
-APP_REPOSITORY = "https://github.com/fatalfailure/veda_ped_analyzer"
-APP_VERSION_LABEL = f"{APP_NAME} v{APP_VERSION}"
+APP_VERSION = "1.1.1"
+APP_RELEASE_DATE = "2026-06-22"
+APP_REPOSITORY_URL = "https://github.com/fatalfailure/veda_ped_analyzer"
 
 try:
     BASE_PATH = Path(__file__).resolve()
@@ -1287,13 +1284,12 @@ Li Be Na Mg Al K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Rb Sr Y Zr Nb Mo Tc Ru Rh Pd
 La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Fr Ra Ac Th Pa U
 """.split())
 
-MAIN_DESCRIPTION = f"""Target-tracking PED analyzer for VEDA/DD2/QC output files.
-Version: {APP_VERSION} ({APP_RELEASE_DATE})
+MAIN_DESCRIPTION = """Target-coordinate PED analyzer for VEDA/DD2/QC output files.
 
-This program keeps the original mode-centered PED export, and adds coordinate-centered analysis:
+This program keeps the original mode-centered PED export and adds coordinate-centered analysis:
 - Long PED table: rank 7 and below are searchable.
 - Target hits: selected internal coordinates are traced across all vibrational modes.
-- Target summaries: metal-ligand stretch components split across fingerprint-region modes can be found by total target PED.
+- Target summaries: any user-selected coordinate set can be followed across modes; metal-ligand stretching detection is an optional helper.
 """
 
 USAGE_MANUAL = """Recommended workflow
@@ -1302,11 +1298,13 @@ USAGE_MANUAL = """Recommended workflow
    Select .ved, .dd2, optional .fmu, and QC output (.out/.log). Press Load / Precheck.
 
 2. Coordinate Browser
-   Filter DD2 internal coordinates. For metal-ligand stretches, use group=STRE and metal atom index,
-   or press Auto-detect metal-ligand stretches.
+   Filter DD2 internal coordinates. By default the browser shows standard stretching coordinates
+   (s - standard, STRE - Stretching). Use filters to find the coordinates of interest.
+   The M-L auto-detect button is an optional helper for coordination complexes.
 
 3. Target Definition
-   Confirm the target coordinate IDs. Set a frequency range and PED thresholds.
+   Confirm the target coordinate IDs. The target set name is only an output label.
+   Set a frequency range and PED thresholds.
 
 4. Run Analysis
    Export the standard top-N table, long PED table, target hits, and target summaries.
@@ -1367,6 +1365,43 @@ def _parse_optional_float(text: Any) -> Optional[float]:
     except Exception:
         return None
 
+
+
+def _code_filter_display(code: str) -> str:
+    c = (code or "").strip().lower()
+    if c == "s":
+        return "s - standard"
+    if c == "k":
+        return "k - alternative"
+    if c == "v":
+        return "v - alternative2"
+    return f"{c} - coordinate set" if c else ""
+
+
+def _code_from_filter_display(value: str) -> str:
+    v = (value or "").strip()
+    if not v or v == "(any)":
+        return "(any)"
+    return v.split("-", 1)[0].strip().lower()
+
+
+def _group_filter_display(group: str) -> str:
+    g = (group or "").strip()
+    gu = g.upper()
+    if gu.startswith("STRE"):
+        return f"{g} - Stretching"
+    if gu.startswith("BEND"):
+        return f"{g} - Bending"
+    if gu.startswith("TORS"):
+        return f"{g} - Torsion"
+    return g
+
+
+def _group_from_filter_display(value: str) -> str:
+    v = (value or "").strip()
+    if not v or v == "(any)":
+        return "(any)"
+    return v.split("-", 1)[0].strip()
 
 def _code_output_label(code: str) -> str:
     c = (code or "").strip().lower()
@@ -1492,7 +1527,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title(f"{APP_VERSION_LABEL} (Target Coordinate Tracking)")
+        self.title(f"{APP_NAME} v{APP_VERSION} - Target Coordinate Tracking")
         self.geometry("1120x780")
 
         self.ved_path: Optional[str] = None
@@ -1604,18 +1639,18 @@ class App(tk.Tk):
         filters = ttk.LabelFrame(tab, text="Filters", padding=8)
         filters.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
 
-        self.filter_code_var = tk.StringVar(value="(any)")
-        self.filter_group_var = tk.StringVar(value="(any)")
+        self.filter_code_var = tk.StringVar(value="s - standard")
+        self.filter_group_var = tk.StringVar(value="STRE - Stretching")
         self.filter_atom_var = tk.StringVar(value="")
         self.filter_element_var = tk.StringVar(value="")
         self.filter_label_var = tk.StringVar(value="")
 
-        ttk.Label(filters, text="Code").grid(row=0, column=0, sticky="w")
-        self.filter_code_combo = ttk.Combobox(filters, textvariable=self.filter_code_var, values=["(any)"], width=12, state="readonly")
+        ttk.Label(filters, text="Coordinate set").grid(row=0, column=0, sticky="w")
+        self.filter_code_combo = ttk.Combobox(filters, textvariable=self.filter_code_var, values=["s - standard", "(any)", "k - alternative", "v - alternative2"], width=18, state="readonly")
         self.filter_code_combo.grid(row=0, column=1, padx=4, sticky="w")
 
         ttk.Label(filters, text="Group").grid(row=0, column=2, sticky="w")
-        self.filter_group_combo = ttk.Combobox(filters, textvariable=self.filter_group_var, values=["(any)"], width=14, state="readonly")
+        self.filter_group_combo = ttk.Combobox(filters, textvariable=self.filter_group_var, values=["STRE - Stretching", "(any)"], width=18, state="readonly")
         self.filter_group_combo.grid(row=0, column=3, padx=4, sticky="w")
 
         ttk.Label(filters, text="Contains atom index").grid(row=0, column=4, sticky="w")
@@ -1632,7 +1667,7 @@ class App(tk.Tk):
         buttons.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
         ttk.Button(buttons, text="Apply filter", command=self.refresh_coordinate_table).pack(side="left", padx=(0, 6))
         ttk.Button(buttons, text="Add selected to target", command=self.add_selected_coords_to_target).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Auto-detect metal-ligand stretches", command=self.auto_detect_target_coords).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Auto-detect M-L stretches", command=self.auto_detect_target_coords).pack(side="left", padx=6)
         ttk.Button(buttons, text="Clear filter", command=self.clear_coordinate_filters).pack(side="left", padx=6)
 
         table_frame = ttk.LabelFrame(tab, text="DD2 internal coordinates", padding=6)
@@ -1667,13 +1702,13 @@ class App(tk.Tk):
         settings.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
         settings.columnconfigure(1, weight=1)
 
-        self.target_name_var = tk.StringVar(value="metal_ligand_stretch")
+        self.target_name_var = tk.StringVar(value="target_coordinates")
         self.metal_atoms_var = tk.StringVar(value="")
         self.ligand_atoms_var = tk.StringVar(value="")
         self.ligand_elements_var = tk.StringVar(value="N O S P Cl Br I")
-        self.use_rule_if_empty_var = tk.BooleanVar(value=True)
+        self.use_rule_if_empty_var = tk.BooleanVar(value=False)
 
-        ttk.Label(settings, text="Target set name").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(settings, text="Target set name (output label)").grid(row=0, column=0, sticky="w", pady=3)
         ttk.Entry(settings, textvariable=self.target_name_var, width=32).grid(row=0, column=1, sticky="w", pady=3)
 
         ttk.Label(settings, text="Metal atom index/indices").grid(row=1, column=0, sticky="w", pady=3)
@@ -1688,7 +1723,7 @@ class App(tk.Tk):
         ttk.Entry(settings, textvariable=self.ligand_elements_var, width=32).grid(row=3, column=1, sticky="w", pady=3)
         ttk.Label(settings, text="Example: N O S Cl").grid(row=3, column=2, sticky="w", padx=8)
 
-        ttk.Checkbutton(settings, text="If target ID list is empty, use the metal-ligand stretch rule", variable=self.use_rule_if_empty_var).grid(row=4, column=0, columnspan=3, sticky="w", pady=3)
+        ttk.Checkbutton(settings, text="If target ID list is empty, use optional metal-ligand stretch auto-detection", variable=self.use_rule_if_empty_var).grid(row=4, column=0, columnspan=3, sticky="w", pady=3)
 
         ids_frame = ttk.LabelFrame(tab, text="Target coord_id list", padding=8)
         ids_frame.grid(row=1, column=0, sticky="ew", padx=12, pady=6)
@@ -1698,7 +1733,7 @@ class App(tk.Tk):
         id_buttons = ttk.Frame(ids_frame)
         id_buttons.grid(row=1, column=0, sticky="ew", pady=(6, 0))
         ttk.Button(id_buttons, text="Sort / Deduplicate IDs", command=self.normalize_target_ids_text).pack(side="left", padx=(0, 6))
-        ttk.Button(id_buttons, text="Replace by auto-detect", command=self.auto_detect_target_coords).pack(side="left", padx=6)
+        ttk.Button(id_buttons, text="Replace by M-L auto-detect", command=self.auto_detect_target_coords).pack(side="left", padx=6)
         ttk.Button(id_buttons, text="Clear target IDs", command=self.clear_target_ids).pack(side="left", padx=6)
         ttk.Button(id_buttons, text="Refresh target preview", command=self.refresh_target_preview).pack(side="left", padx=6)
 
@@ -1817,7 +1852,10 @@ class App(tk.Tk):
         if self.ved_path and Path(self.ved_path).is_file():
             self._auto_fill_related_files(self.ved_path, only_if_missing=True, save=False)
 
-        self.target_name_var.set(self._cfg.get("target_name", self.target_name_var.get()))
+        saved_target_name = self._cfg.get("target_name", self.target_name_var.get())
+        if saved_target_name == "metal_ligand_stretch":
+            saved_target_name = "target_coordinates"
+        self.target_name_var.set(saved_target_name)
         self.metal_atoms_var.set(self._cfg.get("metal_atoms", self.metal_atoms_var.get()))
         self.ligand_atoms_var.set(self._cfg.get("ligand_atoms", self.ligand_atoms_var.get()))
         self.ligand_elements_var.set(self._cfg.get("ligand_elements", self.ligand_elements_var.get()))
@@ -2054,7 +2092,7 @@ class App(tk.Tk):
             lines = []
             lines.append("Precheck OK")
             lines.append(f"Program version      : {APP_VERSION} ({APP_RELEASE_DATE})")
-            lines.append(f"Repository           : {APP_REPOSITORY}")
+            lines.append(f"Repository           : {APP_REPOSITORY_URL}")
             lines.append("")
             lines.append(f"VEDA modes           : {len(freqs_ved) if freqs_ved else 'not extracted'}")
             lines.append(f"PED blocks           : {len(ped_blks)}")
@@ -2102,16 +2140,37 @@ class App(tk.Tk):
     def _update_filter_choices(self):
         codes = sorted(set(str(r.get("code", "")).lower() for r in self.coordinate_rows if r.get("code")))
         groups = sorted(set(str(r.get("group", "")) for r in self.coordinate_rows if r.get("group")))
-        self.filter_code_combo.configure(values=["(any)"] + codes)
-        self.filter_group_combo.configure(values=["(any)"] + groups)
-        if self.filter_code_var.get() not in (["(any)"] + codes):
+
+        code_values: List[str] = []
+        for preferred in ("s", "k", "v"):
+            if preferred in codes:
+                code_values.append(_code_filter_display(preferred))
+        code_values.extend(_code_filter_display(c) for c in codes if c not in {"s", "k", "v"})
+        code_values.append("(any)")
+
+        stre_groups = [g for g in groups if str(g).upper().startswith("STRE")]
+        other_groups = [g for g in groups if g not in stre_groups]
+        group_values = [_group_filter_display(g) for g in stre_groups + other_groups]
+        group_values.append("(any)")
+
+        self.filter_code_combo.configure(values=code_values)
+        self.filter_group_combo.configure(values=group_values)
+
+        current_code = _code_from_filter_display(self.filter_code_var.get())
+        if "s" in codes:
+            self.filter_code_var.set(_code_filter_display("s"))
+        elif current_code not in codes and current_code != "(any)":
             self.filter_code_var.set("(any)")
-        if self.filter_group_var.get() not in (["(any)"] + groups):
+
+        current_group = _group_from_filter_display(self.filter_group_var.get())
+        if stre_groups:
+            self.filter_group_var.set(_group_filter_display(stre_groups[0]))
+        elif current_group not in groups and current_group != "(any)":
             self.filter_group_var.set("(any)")
 
     def clear_coordinate_filters(self):
-        self.filter_code_var.set("(any)")
-        self.filter_group_var.set("(any)")
+        self.filter_code_var.set("s - standard")
+        self.filter_group_var.set("STRE - Stretching")
         self.filter_atom_var.set("")
         self.filter_element_var.set("")
         self.filter_label_var.set("")
@@ -2126,8 +2185,8 @@ class App(tk.Tk):
         if not self.coordinate_rows:
             return
 
-        code_filter = self.filter_code_var.get().strip().lower()
-        group_filter = self.filter_group_var.get().strip()
+        code_filter = _code_from_filter_display(self.filter_code_var.get())
+        group_filter = _group_from_filter_display(self.filter_group_var.get())
         atom_filter = set(_parse_int_list(self.filter_atom_var.get()))
         element_filter = set(_parse_symbol_list(self.filter_element_var.get()))
         label_filter = self.filter_label_var.get().strip().lower()
@@ -2227,6 +2286,8 @@ class App(tk.Tk):
             if not self.analysis_ctx:
                 return
         ids = sorted(self._detect_target_ids_by_rule())
+        if self.target_name_var.get().strip() in {"", "target_coordinates"}:
+            self.target_name_var.set("metal_ligand_stretch")
         self.target_ids_text.delete("1.0", "end")
         self.target_ids_text.insert("1.0", ", ".join(str(x) for x in ids))
         self.refresh_target_preview()

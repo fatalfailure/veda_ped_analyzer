@@ -1,33 +1,42 @@
 # Changelog
 
+## v1.1.1 - UI and metadata refinements
+
+### Changed
+- Renamed the Coordinate Browser `Code` selector to `Coordinate set` for clarity.
+- Displayed coordinate-set choices as `s - standard`, `k - alternative`, and `v - alternative2`.
+- Set the Coordinate Browser default filters to `s - standard` and `STRE - Stretching`.
+- Reordered Coordinate Browser dropdowns so the recommended defaults appear first.
+- Changed the default target set name from `metal_ligand_stretch` to the generic `target_coordinates`.
+- Made metal-ligand stretch auto-detection an explicit optional helper rather than an implied default workflow.
+- Added clearer documentation for `target_set_name` as a user-defined output label.
+
+### Documentation
+- Updated README and manuals to describe the software as a general PED-analysis tool.
+- Clarified that metal-ligand stretch detection is optional and intended as a convenience for coordination-complex analyses.
+
 ## v1.1.0 - Target Coordinate Tracking
 
 ### Added
-- Added a Coordinate Browser tab for viewing and filtering DD2 internal coordinates.
-- Added target coordinate tracking for selected internal coordinates.
-- Added automatic metal-ligand stretch detection based on atom indices/elements and `STRE` coordinates.
-- Added long-format PED table export (`*_PED_terms_long_*.csv`).
-- Added target hits export (`*_target_hits_*.csv`).
-- Added target summary by mode export (`*_target_summary_by_mode_*.csv`).
-- Added target summary by coordinate export (`*_target_summary_by_coord_*.csv`).
-- Added target matrix export (`*_target_matrix_*.csv`) for spreadsheet heatmaps.
-- Added output folder selection in the GUI.
-- Added GUI option to include or exclude `alternative_k` / `alternative_v` coordinate-set outputs.
-- Added program version information in the GUI and precheck summary.
-- Added English and Japanese standalone manuals.
-- Added repository URL metadata for GitHub publication.
+- Added Coordinate Browser for DD2 internal coordinates.
+- Added target coordinate tracking workflow for selected internal coordinates.
+- Added optional automatic metal-ligand stretch detection.
+- Added long-format PED table export.
+- Added target hits export.
+- Added target summary by mode export.
+- Added target summary by coordinate export.
+- Added target matrix export.
+- Added output folder selection.
+- Added English and Japanese user manuals.
+- Added optional export for alternative `k` / `v` coordinate-set interpretations.
 
 ### Changed
-- Integrated target-coordinate tracking into the main `veda_ped_analyzer.py` program.
-- Alternative coordinate-set outputs are now optional and disabled by default.
-- JSON settings now store target definitions, output options, PED thresholds, and frequency range.
-- README files were updated to describe the target-tracking workflow and new CSV outputs.
-
-### Notes
-- The standard top-N PED table workflow is retained for backward-compatible mode-centered inspection.
-- The long-format and target-summary outputs are recommended when important internal coordinates appear below the top-N cutoff.
+- Integrated the target-coordinate workflow into `veda_ped_analyzer.py`.
+- Alternative coordinate-set outputs are disabled by default and can be enabled from the Run Analysis tab.
+- Configuration JSON stores target settings, output options, PED thresholds, and frequency range.
 
 ## v1.0.0
+
 - Initial public release.
 - Parse VEDA PED output (`.ved`, `.dd2`) and export CSV tables.
 - Support QC output parsing for ORCA (`.out`) and Gaussian (`.log` / `.out`).

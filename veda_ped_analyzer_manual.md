@@ -1,16 +1,13 @@
 # veda_ped_analyzer User Manual
 
-Current version: **v1.1.0 - Target Coordinate Tracking**
-
-## Repository
-
-GitHub: https://github.com/fatalfailure/veda_ped_analyzer
+Repository: https://github.com/fatalfailure/veda_ped_analyzer
+Current version: **v1.1.1 - Target Coordinate Tracking UI refinements**
 
 ## 1. Purpose
 
 `veda_ped_analyzer.py` is a GUI tool for analyzing VEDA PED (Potential Energy Distribution) results and tracking **which vibrational modes contain selected internal coordinates**.
 
-The tool is especially useful for coordination complexes where a metal-ligand stretching coordinate does not appear as a single isolated normal mode, but is instead distributed across many modes in the fingerprint region.
+The program is a general PED analysis tool. It can be used for metal-ligand stretches in coordination complexes, but it is not limited to metal complexes. Any selected internal-coordinate set, such as ring C-C stretches, C=O stretches, bends, torsions, or user-defined coordinate groups, can be tracked.
 
 The original mode-centered PED table is retained. Version 1.1.0 adds coordinate-centered target tracking, allowing selected internal coordinates to be followed across all modes, even when they are below the usual top-N PED cutoff.
 
@@ -120,11 +117,25 @@ Main columns:
 
 | Filter | Example | Use |
 |---|---|---|
-| Code | `s` | Show only standard coordinates |
-| Group | `STRE` | Show only stretching coordinates |
+| Coordinate set | `s - standard` | Show only the standard internal-coordinate interpretation |
+| Group | `STRE - Stretching` | Show only stretching coordinates |
 | Contains atom index | `1` | Show coordinates containing a specific metal atom index |
 | Contains element | `Co` | Show coordinates containing Co |
 | Label contains | `Co-N` | Search by text label |
+
+
+#### Meaning of Coordinate set
+
+The Coordinate set selector shows the VEDA/DD2 internal-coordinate interpretation code. The old label `Code` referred to this coordinate-set code, not to a coordinate itself.
+
+| Display | Meaning |
+|---|---|
+| `s - standard` | Standard internal-coordinate interpretation |
+| `k - alternative` | Alternative internal-coordinate interpretation |
+| `v - alternative2` | Second alternative internal-coordinate interpretation |
+| `(any)` | Show all coordinate-set interpretations |
+
+By default, the Coordinate Browser selects `s - standard` and `STRE - Stretching`.
 
 For metal-ligand stretches, start with:
 
@@ -156,7 +167,7 @@ In `Target Definition`, set:
 
 | Field | Example | Meaning |
 |---|---|---|
-| Target set name | `Co-N_stretch` | Name written to output CSV files |
+| Target set name | `target_coordinates`, etc. | User-defined label written to output CSV files |
 | Metal atom index/indices | `1` | Metal atom index or indices |
 | Ligand atom indices | `14 15 16 17` | Optional restriction by atom index |
 | Ligand elements | `N O S Cl` | Optional restriction by element |
@@ -170,7 +181,7 @@ Replace by auto-detect
 or:
 
 ```text
-Auto-detect metal-ligand stretches
+Auto-detect M-L stretches
 ```
 
 Automatic detection primarily selects DD2 coordinates satisfying:
@@ -198,7 +209,7 @@ For coordination-complex analysis, explicitly specifying the metal atom index is
 | Target summary by mode | ON | Mode-centered total target PED summary |
 | Target summary by coordinate | ON | Coordinate-centered summary |
 | Target matrix | ON | Mode × target-coordinate matrix |
-| Include alternative coordinate sets (k/v) | Usually OFF | Also export `alternative_k` / `alternative_v` coordinate interpretations |
+| Include alternative coordinate sets (k/v) | Usually OFF | Also export `k - alternative` / `v - alternative2` coordinate interpretations |
 | Include target modes below total threshold | As needed | Keep target modes even if total target PED is below threshold |
 
 Normally, keep `Include alternative coordinate sets (k/v)` OFF. Turn it ON only when you need to inspect alternative VEDA/DD2 internal-coordinate interpretations.
@@ -309,7 +320,7 @@ Main columns:
 
 | Column | Meaning |
 |---|---|
-| `target_set_name` | Target name |
+| `target_set_name` | User-defined label for the selected coordinate set; it is not a calculation mode |
 | `coord_id` | Target internal coordinate ID |
 | `label` | Internal-coordinate label |
 | `mode_qc` | QC mode |
@@ -427,7 +438,7 @@ Contains atom index = Co atom index
 5. Set the target name, e.g.:
 
 ```text
-Co-N_stretch
+Co_N_stretches
 ```
 
 6. In `Run Analysis`, set:

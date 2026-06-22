@@ -1,16 +1,11 @@
 # veda_ped_analyzer 使い方マニュアル
 
-現在のバージョン: **v1.1.0 - Target Coordinate Tracking**
-
-## リポジトリ
-
-GitHub: https://github.com/fatalfailure/veda_ped_analyzer
-
+Repository: https://github.com/fatalfailure/veda_ped_analyzer
 ## 1. このプログラムの目的
 
-`veda_ped_analyzer.py` は、VEDA の PED（Potential Energy Distribution）解析結果を使って、**特定の内部座標がどの振動モードに含まれているか**を追跡するための GUI ツールです。
+`veda_ped_analyzer.py` は、VEDA の PED（Potential Energy Distribution）解析結果を使って、**任意に選択した内部座標がどの振動モードに含まれているか**を追跡するための汎用 GUI ツールです。
 
-特に、金属錯体における **金属–配位子結合の伸縮振動** のように、1つの振動として明確に現れず、指紋領域の複数モードに分裂して現れる成分を探す用途を想定しています。
+金属錯体における金属–配位子伸縮の探索にも使えますが、このソフトは金属錯体専用ではありません。芳香環 C-C 伸縮、C=O 伸縮、特定結合の変角、ねじれ座標など、ユーザーが指定した任意の内部座標群を target として追跡できます。
 
 従来型の PED 表では、各振動モードについて寄与率上位の内部座標だけを確認します。一方、このプログラムでは、注目した内部座標を target として指定し、その内部座標がどの mode に何 % 含まれているかを縦方向に追跡できます。
 
@@ -134,11 +129,25 @@ Atom map
 
 | フィルタ | 例 | 用途 |
 |---|---|---|
-| Code | `s` | standard 座標だけを見る |
-| Group | `STRE` | 伸縮座標だけを見る |
+| Coordinate set | `s - standard` | 標準の内部座標解釈だけを見る |
+| Group | `STRE - Stretching` | 伸縮座標だけを見る |
 | Contains atom index | `1` | 金属原子 index を含む座標だけを見る |
 | Contains element | `Co` | Co を含む座標だけを見る |
 | Label contains | `Co-N` | ラベル文字列で絞る |
+
+
+#### Coordinate set の意味
+
+Coordinate set は VEDA/DD2 の内部座標解釈コードを分かりやすく表示したものです。`Code` は座標そのものではなく、座標解釈の種類を表します。
+
+| 表示 | 意味 |
+|---|---|
+| `s - standard` | 標準の内部座標解釈 |
+| `k - alternative` | 代替内部座標解釈 |
+| `v - alternative2` | 2つ目の代替内部座標解釈 |
+| `(any)` | すべての座標解釈を表示 |
+
+Coordinate Browser は初期状態で `s - standard` と `STRE - Stretching` を選択します。
 
 金属–配位子伸縮を探す場合は、まず以下のように絞ると便利です。
 
@@ -152,6 +161,10 @@ Contains atom index = 金属原子の atom index
 ### Step 4. Target 座標を指定する
 
 Target とは、追跡したい内部座標の集合です。
+
+
+`target_set_name` は、出力 CSV に記録される target 座標群のラベルです。これは計算モードではありません。デフォルトは `target_coordinates` で、必要に応じて `ring_CC_stretches`, `carbonyl_modes`, `Co_N_stretches` のように変更できます。
+
 
 例えば、Co 錯体で Co–N 伸縮を追跡したい場合、Co–N に対応する複数の `coord_id` を target に登録します。
 
@@ -167,7 +180,7 @@ Target とは、追跡したい内部座標の集合です。
 
 | 項目 | 例 | 意味 |
 |---|---|---|
-| Target set name | `Co-N_stretch` | 出力に使われる target 名 |
+| Target set name | `target_coordinates` など | 出力 CSV に記録されるユーザー定義ラベル |
 | Metal atom index/indices | `1` | 金属原子の atom index |
 | Ligand atom indices | `14 15 16 17` | 配位原子を index で限定する場合 |
 | Ligand elements | `N O S Cl` | 配位原子を元素で限定する場合 |
@@ -181,7 +194,7 @@ Replace by auto-detect
 または
 
 ```text
-Auto-detect metal-ligand stretches
+Auto-detect M-L stretches
 ```
 
 を押します。
@@ -215,7 +228,6 @@ coord_group が STRE
 | Target summary by mode | ON | mode ごとに target PED 合計を出力 |
 | Target summary by coordinate | ON | 内部座標ごとに出現 mode を集計 |
 | Target matrix | ON | mode × target coord_id の行列を出力 |
-| Include alternative coordinate sets (k/v) | 通常 OFF | alternative_k / alternative_v の座標解釈も出力する |
 | Include target modes below total threshold | 必要に応じて | target 合計 PED がしきい値未満の mode も残す |
 
 通常はすべて ON で問題ありません。
@@ -337,7 +349,7 @@ sample_target_hits_standard.csv
 
 | 列 | 意味 |
 |---|---|
-| target_set_name | target 名 |
+| target_set_name | 選択した内部座標群に付けたユーザー定義ラベル。計算モードではない |
 | coord_id | target 内部座標 ID |
 | label | 内部座標ラベル |
 | mode_qc | QC 側 mode |
@@ -483,7 +495,7 @@ Contains atom index = Co の atom index
 5. `Target Definition` で target 名を設定する。
 
 ```text
-Target set name = Co-N_stretch
+Target set name = Co_N_stretches
 ```
 
 6. `Run Analysis` で以下を設定する。
