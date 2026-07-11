@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-veda_ped_analyzer (v1.1.1 - Target Coordinate Tracking UI refinements)
+veda_ped_analyzer (public release v1.1.7 - Combined Target Matrix-Source Selection Fix)
 
 Purpose
 - Combine the PED (Potential Energy Distribution) matrix from a VEDA .ved file with
@@ -12,8 +12,7 @@ Purpose
   map ORCA modes to VEDA modes using a frequency-based 1:1 ordered alignment.
 - Support multi-interpretation export (STANDARD 's', ALTERNATIVE 'k', ALTERNATIVE2 'v') 
   to fully ensure alternative coordinate sets are captured and accurately labeled.
-- Add coordinate-centered target tracking for selected internal coordinates.
-- Provide optional helper detection for metal-ligand stretching coordinates without making it the default workflow.
+- Add coordinate-centered target tracking for metal-ligand stretches and other selected internal coordinates.
 - Export long PED tables, target hits, target summaries by mode/coordinate, and target matrices.
 """
 
@@ -42,9 +41,64 @@ from tkinter import ttk
 # ------------------------------------------------------------
 
 APP_NAME = "veda_ped_analyzer"
-APP_VERSION = "1.1.1"
-APP_RELEASE_DATE = "2026-06-22"
-APP_REPOSITORY_URL = "https://github.com/fatalfailure/veda_ped_analyzer"
+APP_VERSION = "1.1.9"
+APP_RELEASE_DATE = "2026-07-11"
+APP_VERSION_LABEL = f"{APP_NAME} v{APP_VERSION}"
+
+COORDINATE_CODE_LABELS = {
+    "s": "s - standard",
+    "k": "k - alternative",
+    "v": "v - alternative2",
+}
+COORDINATE_CODE_ORDER = ["s", "k", "v"]
+
+COORDINATE_GROUP_LABELS = {
+    "STRE": "STRE - Stretching",
+    "BEND": "BEND - Bending",
+    "TORS": "TORS - Torsion",
+}
+COORDINATE_GROUP_ORDER = ["STRE", "BEND", "TORS"]
+
+
+def _code_display(code: str) -> str:
+    c = (code or "").strip().lower()
+    return COORDINATE_CODE_LABELS.get(c, c)
+
+
+def _code_from_filter(value: str) -> str:
+    v = (value or "").strip().lower()
+    if not v or v == "(any)":
+        return "(any)"
+    # Accept both raw values such as "s" and display labels such as "s - standard".
+    return v.split()[0]
+
+
+def _group_display(group: str) -> str:
+    g = (group or "").strip().upper()
+    return COORDINATE_GROUP_LABELS.get(g, g)
+
+
+def _group_from_filter(value: str) -> str:
+    v = (value or "").strip()
+    if not v or v == "(any)":
+        return "(any)"
+    # Accept both raw values such as "STRE" and display labels such as "STRE - Stretching".
+    return v.split()[0].upper()
+
+
+def _ordered_code_values(codes) -> list:
+    codes_l = sorted({str(c).strip().lower() for c in codes if str(c).strip()})
+    ordered = [c for c in COORDINATE_CODE_ORDER if c in codes_l]
+    ordered += [c for c in codes_l if c not in ordered]
+    return [_code_display(c) for c in ordered] + ["(any)"]
+
+
+def _ordered_group_values(groups) -> list:
+    groups_u = sorted({str(g).strip().upper() for g in groups if str(g).strip()})
+    ordered = [g for g in COORDINATE_GROUP_ORDER if g in groups_u]
+    ordered += [g for g in groups_u if g not in ordered]
+    return [_group_display(g) for g in ordered] + ["(any)"]
+
 
 try:
     BASE_PATH = Path(__file__).resolve()
@@ -1254,11 +1308,16 @@ def build_ped_column_coord_map(ped_col_ids: List[int], dd2_coords: List[dict], t
         c_obj = best_by_id.get(cid)
         if c_obj is None:
             missing_ids.append(cid)
+        all_candidates = rows_by_id.get(cid, []) or []
+        code_candidates = [r for r in all_candidates if (r.get("coord_code") or "").lower() == target_code.lower()]
+        if not code_candidates and target_code.lower() != "s":
+            code_candidates = [r for r in all_candidates if (r.get("coord_code") or "").lower() == "s"]
         colpos_to_info[pos] = {
             "ped_col": pos,
             "coord_id": cid,
             "coord_code": best_code_by_id.get(cid, ""),
             "coord": c_obj,
+            "coord_candidates": code_candidates or all_candidates,
         }
 
     if missing_ids:
@@ -1284,12 +1343,13 @@ Li Be Na Mg Al K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn Ga Rb Sr Y Zr Nb Mo Tc Ru Rh Pd
 La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Fr Ra Ac Th Pa U
 """.split())
 
-MAIN_DESCRIPTION = """Target-coordinate PED analyzer for VEDA/DD2/QC output files.
+MAIN_DESCRIPTION = f"""Target-tracking PED analyzer for VEDA/DD2/QC output files.
+Version: {APP_VERSION} ({APP_RELEASE_DATE})
 
-This program keeps the original mode-centered PED export and adds coordinate-centered analysis:
+This program keeps the original mode-centered PED export, and adds coordinate-centered analysis:
 - Long PED table: rank 7 and below are searchable.
 - Target hits: selected internal coordinates are traced across all vibrational modes.
-- Target summaries: any user-selected coordinate set can be followed across modes; metal-ligand stretching detection is an optional helper.
+- Target summaries: selected internal coordinates can be tracked by total target PED, including mixed standard/alternative coordinates.
 """
 
 USAGE_MANUAL = """Recommended workflow
@@ -1298,13 +1358,11 @@ USAGE_MANUAL = """Recommended workflow
    Select .ved, .dd2, optional .fmu, and QC output (.out/.log). Press Load / Precheck.
 
 2. Coordinate Browser
-   Filter DD2 internal coordinates. By default the browser shows standard stretching coordinates
-   (s - standard, STRE - Stretching). Use filters to find the coordinates of interest.
-   The M-L auto-detect button is an optional helper for coordination complexes.
+   Filter DD2 internal coordinates. Filter DD2 internal coordinates. Use coordinate-set-qualified targets such as s:83, k:126, or v:76.
+   For metal-ligand stretches, use group=STRE and metal atom index, or press Auto-detect metal-ligand stretches.
 
 3. Target Definition
-   Confirm the target coordinate IDs. The target set name is only an output label.
-   Set a frequency range and PED thresholds.
+   Confirm the target coordinate references. Set a frequency range and PED thresholds.
 
 4. Run Analysis
    Export the standard top-N table, long PED table, target hits, and target summaries.
@@ -1343,6 +1401,170 @@ def _parse_int_list(text: Any) -> List[int]:
     return out
 
 
+def _parse_atom_filter_requirements(text: Any) -> List[set]:
+    """Parse the Coordinate Browser atom filter.
+
+    Semantics:
+    - ``3`` shows coordinates containing atom 3.
+    - ``3,12`` or ``3 12`` shows coordinates containing atom 3 OR atom 12
+      (backward-compatible behaviour).
+    - ``3-12`` / ``3–12`` / ``3－12`` shows coordinates containing BOTH
+      atom 3 and atom 12. This is intended for bond/pair searches.
+    - Multiple pair expressions are OR'ed, e.g. ``3-12; 4-11``.
+
+    Return a list of required atom sets; a row matches if any set is a subset
+    of that row's atom list.
+    """
+    if text is None:
+        return []
+    s = str(text).strip()
+    if not s:
+        return []
+    # Normalize common dash variants used in Japanese/Windows input.
+    s_norm = s.replace("–", "-").replace("—", "-").replace("−", "-").replace("－", "-")
+    reqs: List[set] = []
+    consumed = []
+
+    # Treat a-b as a pair/bond query, not as a numeric range.
+    pair_pat = re.compile(r"(?<!\d)(\d+)\s*-\s*(\d+)(?!\d)")
+    for m in pair_pat.finditer(s_norm):
+        try:
+            a = int(m.group(1)); b = int(m.group(2))
+        except Exception:
+            continue
+        req = {a, b}
+        if req and req not in reqs:
+            reqs.append(req)
+        consumed.append((m.start(), m.end()))
+
+    # Remove pair spans before parsing singleton OR terms.
+    chars = list(s_norm)
+    for a, b in consumed:
+        for i in range(a, b):
+            chars[i] = " "
+    rest = "".join(chars)
+    for tok in re.findall(r"\d+", rest):
+        try:
+            req = {int(tok)}
+        except Exception:
+            continue
+        if req and req not in reqs:
+            reqs.append(req)
+    return reqs
+
+
+def _normalize_coord_group(group: Any) -> str:
+    g = str(group or "").strip().upper()
+    if not g:
+        return "*"
+    if g.startswith("STRE"):
+        return "STRE"
+    if g.startswith("BEND"):
+        return "BEND"
+    if g.startswith("TORS"):
+        return "TORS"
+    return g
+
+
+def _make_target_ref(code: Any, group: Any = None, coord_id: Any = None) -> str:
+    """Return a group-qualified coordinate reference, e.g. k:STRE:126.
+
+    The three-part reference is required because VEDA/DD2 may reuse the same
+    code+coord_id for different coordinate groups such as STRE and BEND.
+    For backward compatibility, two-argument calls produce code:*:coord_id.
+    """
+    if coord_id is None:
+        coord_id = group
+        group = "*"
+    c = str(code or "s").strip().lower() or "s"
+    g = _normalize_coord_group(group)
+    try:
+        cid = int(coord_id)
+    except Exception:
+        cid = str(coord_id).strip()
+    return f"{c}:{g}:{cid}"
+
+
+def _split_target_ref(ref: Any) -> Tuple[str, str, int]:
+    parts = str(ref or "").strip().split(":")
+    if len(parts) == 3:
+        code, group, cid = parts
+    elif len(parts) == 2:
+        code, cid = parts
+        group = "*"
+    elif len(parts) == 1 and parts[0]:
+        code, group, cid = "s", "*", parts[0]
+    else:
+        raise ValueError("empty target reference")
+    return (str(code or "s").lower(), _normalize_coord_group(group), int(cid))
+
+
+def _target_ref_matches(concrete_ref: Any, requested_refs: set) -> bool:
+    """Return True when a concrete code:group:id ref is selected.
+
+    Wildcard forms from older configs are accepted: k:*:126 or s:*:83.
+    """
+    try:
+        c, g, cid = _split_target_ref(concrete_ref)
+    except Exception:
+        return False
+    wanted = {str(r).lower() for r in requested_refs}
+    g_l = str(g).lower()
+    return (
+        f"{c}:{g_l}:{cid}" in wanted or
+        f"{c}:*:{cid}" in wanted or
+        f"*:{g_l}:{cid}" in wanted or
+        f"*:*:{cid}" in wanted
+    )
+
+
+def _parse_target_refs(text: Any, default_code: str = "s") -> List[str]:
+    """Parse target references from free text.
+
+    Preferred examples: ``s:STRE:83``, ``k:STRE:126``, ``v:BEND:81``.
+    Backward-compatible examples: ``s:83`` -> ``s:*:83`` and ``83`` -> ``s:*:83``.
+    """
+    if text is None:
+        return []
+    s = str(text)
+    refs: List[str] = []
+    seen = set()
+
+    # Preferred three-part refs.
+    pat3 = r"(?i)\b([skv])\s*[:：]\s*([A-Za-z0-9_]+)\s*[:：]\s*([0-9]+)\b"
+    for m in re.finditer(pat3, s):
+        ref = _make_target_ref(m.group(1), m.group(2), m.group(3))
+        if ref not in seen:
+            seen.add(ref); refs.append(ref)
+
+    stripped = re.sub(pat3, " ", s)
+    # Legacy two-part refs.
+    pat2 = r"(?i)\b([skv])\s*[:：]\s*([0-9]+)\b"
+    for m in re.finditer(pat2, stripped):
+        ref = _make_target_ref(m.group(1), "*", m.group(2))
+        if ref not in seen:
+            seen.add(ref); refs.append(ref)
+
+    stripped = re.sub(pat2, " ", stripped)
+    for tok in re.findall(r"\b[0-9]+\b", stripped):
+        ref = _make_target_ref(default_code, "*", tok)
+        if ref not in seen:
+            seen.add(ref); refs.append(ref)
+    return refs
+
+
+def _sort_target_refs(refs) -> List[str]:
+    order = {"s": 0, "k": 1, "v": 2, "*": 9}
+    gorder = {"STRE": 0, "BEND": 1, "TORS": 2, "*": 9}
+    def key(ref):
+        try:
+            code, group, cid = _split_target_ref(ref)
+            return (order.get(code, 8), gorder.get(group, 8), int(cid))
+        except Exception:
+            return (9, 9, str(ref))
+    return sorted(set(str(r) for r in refs if str(r).strip()), key=key)
+
+
 def _parse_symbol_list(text: Any) -> List[str]:
     if text is None:
         return []
@@ -1366,43 +1588,6 @@ def _parse_optional_float(text: Any) -> Optional[float]:
         return None
 
 
-
-def _code_filter_display(code: str) -> str:
-    c = (code or "").strip().lower()
-    if c == "s":
-        return "s - standard"
-    if c == "k":
-        return "k - alternative"
-    if c == "v":
-        return "v - alternative2"
-    return f"{c} - coordinate set" if c else ""
-
-
-def _code_from_filter_display(value: str) -> str:
-    v = (value or "").strip()
-    if not v or v == "(any)":
-        return "(any)"
-    return v.split("-", 1)[0].strip().lower()
-
-
-def _group_filter_display(group: str) -> str:
-    g = (group or "").strip()
-    gu = g.upper()
-    if gu.startswith("STRE"):
-        return f"{g} - Stretching"
-    if gu.startswith("BEND"):
-        return f"{g} - Bending"
-    if gu.startswith("TORS"):
-        return f"{g} - Torsion"
-    return g
-
-
-def _group_from_filter_display(value: str) -> str:
-    v = (value or "").strip()
-    if not v or v == "(any)":
-        return "(any)"
-    return v.split("-", 1)[0].strip()
-
 def _code_output_label(code: str) -> str:
     c = (code or "").strip().lower()
     if c == "s":
@@ -1412,6 +1597,50 @@ def _code_output_label(code: str) -> str:
     if c == "v":
         return "alternative_v"
     return c or "unknown"
+
+
+def _is_standard_ped_block(ped_block: Optional[dict]) -> bool:
+    """Return True when a PED block is the standard VEDA PED block."""
+    if not ped_block:
+        return False
+    code = str(ped_block.get("target_code", "s") or "s").strip().lower()
+    header = str(ped_block.get("header", "") or "").upper()
+    return code == "s" and "ALTERNATIVE" not in header
+
+
+def _select_ped_block_for_coordinate_code(ped_blocks: List[dict], code: str) -> Tuple[Optional[dict], bool]:
+    """Select the PED matrix to use for a requested coordinate-set code.
+
+    VEDA/DD2 often contains alternative coordinate rows (k/v) even when the .ved
+    file provides only a single PED matrix.  In that common case, alternative
+    interpretation should mean: use the standard PED matrix columns and label
+    those columns with the requested DD2 coordinate set.
+
+    Returns (ped_block, reinterpreted_from_standard).  The flag is True when no
+    PED block explicitly matching ``code`` was found and a standard/first block
+    is used as a matrix source.
+    """
+    c = str(code or "s").strip().lower() or "s"
+    blocks = list(ped_blocks or [])
+    if not blocks:
+        return None, True
+
+    exact = [b for b in blocks if str(b.get("target_code", "s") or "s").strip().lower() == c]
+    if exact:
+        # For s, prefer a block whose header is not ALTERNATIVE.  For k/v, the
+        # target_code assigned by parse_ved_freqs_and_matrices is already the
+        # best available marker.
+        if c == "s":
+            for b in exact:
+                if _is_standard_ped_block(b):
+                    return b, False
+        return exact[0], False
+
+    for b in blocks:
+        if _is_standard_ped_block(b):
+            return b, True
+
+    return blocks[0], True
 
 
 def _format_atom(idx: int, atom_map: Optional[Dict[int, str]]) -> str:
@@ -1527,7 +1756,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
 
-        self.title(f"{APP_NAME} v{APP_VERSION} - Target Coordinate Tracking")
+        self.title(f"{APP_VERSION_LABEL} (Target Coordinate Tracking)")
         self.geometry("1120x780")
 
         self.ved_path: Optional[str] = None
@@ -1639,35 +1868,44 @@ class App(tk.Tk):
         filters = ttk.LabelFrame(tab, text="Filters", padding=8)
         filters.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
 
-        self.filter_code_var = tk.StringVar(value="s - standard")
-        self.filter_group_var = tk.StringVar(value="STRE - Stretching")
+        self.filter_code_var = tk.StringVar(value=_code_display("s"))
+        self.filter_group_var = tk.StringVar(value=_group_display("STRE"))
         self.filter_atom_var = tk.StringVar(value="")
         self.filter_element_var = tk.StringVar(value="")
         self.filter_label_var = tk.StringVar(value="")
 
         ttk.Label(filters, text="Coordinate set").grid(row=0, column=0, sticky="w")
-        self.filter_code_combo = ttk.Combobox(filters, textvariable=self.filter_code_var, values=["s - standard", "(any)", "k - alternative", "v - alternative2"], width=18, state="readonly")
+        self.filter_code_combo = ttk.Combobox(filters, textvariable=self.filter_code_var, values=[_code_display("s"), _code_display("k"), _code_display("v"), "(any)"], width=18, state="readonly")
         self.filter_code_combo.grid(row=0, column=1, padx=4, sticky="w")
 
         ttk.Label(filters, text="Group").grid(row=0, column=2, sticky="w")
-        self.filter_group_combo = ttk.Combobox(filters, textvariable=self.filter_group_var, values=["STRE - Stretching", "(any)"], width=18, state="readonly")
+        self.filter_group_combo = ttk.Combobox(filters, textvariable=self.filter_group_var, values=[_group_display("STRE"), "(any)"], width=20, state="readonly")
         self.filter_group_combo.grid(row=0, column=3, padx=4, sticky="w")
 
-        ttk.Label(filters, text="Contains atom index").grid(row=0, column=4, sticky="w")
-        ttk.Entry(filters, textvariable=self.filter_atom_var, width=14).grid(row=0, column=5, padx=4, sticky="w")
+        ttk.Label(filters, text="Atom filter").grid(row=0, column=4, sticky="w")
+        ttk.Entry(filters, textvariable=self.filter_atom_var, width=18).grid(row=0, column=5, padx=4, sticky="w")
 
         ttk.Label(filters, text="Contains element").grid(row=1, column=0, sticky="w", pady=(5, 0))
         ttk.Entry(filters, textvariable=self.filter_element_var, width=14).grid(row=1, column=1, padx=4, sticky="w", pady=(5, 0))
 
-        ttk.Label(filters, text="Label contains").grid(row=1, column=2, sticky="w", pady=(5, 0))
+        ttk.Label(filters, text="Text filter").grid(row=1, column=2, sticky="w", pady=(5, 0))
         ttk.Entry(filters, textvariable=self.filter_label_var, width=30).grid(row=1, column=3, columnspan=3, padx=4, sticky="ew", pady=(5, 0))
         filters.columnconfigure(3, weight=1)
+
+        help_text = (
+            "Atom filter: 3 = contains atom 3; 3,12 = contains atom 3 OR 12; "
+            "3-12 = contains BOTH atoms 3 and 12.  "
+            "Text filter: searches atom label / VEDA label / raw label, e.g. C4-C11, CC, ZnO, str."
+        )
+        ttk.Label(filters, text=help_text, foreground="#555555", wraplength=980, justify="left").grid(
+            row=2, column=0, columnspan=6, sticky="w", pady=(6, 0)
+        )
 
         buttons = ttk.Frame(tab)
         buttons.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
         ttk.Button(buttons, text="Apply filter", command=self.refresh_coordinate_table).pack(side="left", padx=(0, 6))
         ttk.Button(buttons, text="Add selected to target", command=self.add_selected_coords_to_target).pack(side="left", padx=6)
-        ttk.Button(buttons, text="Auto-detect M-L stretches", command=self.auto_detect_target_coords).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Auto-detect metal-ligand stretches", command=self.auto_detect_target_coords).pack(side="left", padx=6)
         ttk.Button(buttons, text="Clear filter", command=self.clear_coordinate_filters).pack(side="left", padx=6)
 
         table_frame = ttk.LabelFrame(tab, text="DD2 internal coordinates", padding=6)
@@ -1706,9 +1944,9 @@ class App(tk.Tk):
         self.metal_atoms_var = tk.StringVar(value="")
         self.ligand_atoms_var = tk.StringVar(value="")
         self.ligand_elements_var = tk.StringVar(value="N O S P Cl Br I")
-        self.use_rule_if_empty_var = tk.BooleanVar(value=False)
+        self.use_rule_if_empty_var = tk.BooleanVar(value=True)
 
-        ttk.Label(settings, text="Target set name (output label)").grid(row=0, column=0, sticky="w", pady=3)
+        ttk.Label(settings, text="Target set name").grid(row=0, column=0, sticky="w", pady=3)
         ttk.Entry(settings, textvariable=self.target_name_var, width=32).grid(row=0, column=1, sticky="w", pady=3)
 
         ttk.Label(settings, text="Metal atom index/indices").grid(row=1, column=0, sticky="w", pady=3)
@@ -1723,18 +1961,18 @@ class App(tk.Tk):
         ttk.Entry(settings, textvariable=self.ligand_elements_var, width=32).grid(row=3, column=1, sticky="w", pady=3)
         ttk.Label(settings, text="Example: N O S Cl").grid(row=3, column=2, sticky="w", padx=8)
 
-        ttk.Checkbutton(settings, text="If target ID list is empty, use optional metal-ligand stretch auto-detection", variable=self.use_rule_if_empty_var).grid(row=4, column=0, columnspan=3, sticky="w", pady=3)
+        ttk.Checkbutton(settings, text="If target ID list is empty, use the metal-ligand stretch rule", variable=self.use_rule_if_empty_var).grid(row=4, column=0, columnspan=3, sticky="w", pady=3)
 
-        ids_frame = ttk.LabelFrame(tab, text="Target coord_id list", padding=8)
+        ids_frame = ttk.LabelFrame(tab, text="Target coordinate references", padding=8)
         ids_frame.grid(row=1, column=0, sticky="ew", padx=12, pady=6)
         ids_frame.columnconfigure(0, weight=1)
         self.target_ids_text = tk.Text(ids_frame, height=4, wrap="word")
         self.target_ids_text.grid(row=0, column=0, sticky="ew")
         id_buttons = ttk.Frame(ids_frame)
         id_buttons.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-        ttk.Button(id_buttons, text="Sort / Deduplicate IDs", command=self.normalize_target_ids_text).pack(side="left", padx=(0, 6))
-        ttk.Button(id_buttons, text="Replace by M-L auto-detect", command=self.auto_detect_target_coords).pack(side="left", padx=6)
-        ttk.Button(id_buttons, text="Clear target IDs", command=self.clear_target_ids).pack(side="left", padx=6)
+        ttk.Button(id_buttons, text="Sort / Deduplicate refs", command=self.normalize_target_ids_text).pack(side="left", padx=(0, 6))
+        ttk.Button(id_buttons, text="Replace by auto-detect", command=self.auto_detect_target_coords).pack(side="left", padx=6)
+        ttk.Button(id_buttons, text="Clear target refs", command=self.clear_target_ids).pack(side="left", padx=6)
         ttk.Button(id_buttons, text="Refresh target preview", command=self.refresh_target_preview).pack(side="left", padx=6)
 
         preview_frame = ttk.LabelFrame(tab, text="Target coordinate preview", padding=6)
@@ -1742,7 +1980,7 @@ class App(tk.Tk):
         preview_frame.rowconfigure(0, weight=1)
         preview_frame.columnconfigure(0, weight=1)
         self.target_tree = self._make_tree_with_scrollbars(preview_frame, height=12)
-        self._configure_generic_tree(self.target_tree, ["coord_id", "code", "group", "atom_label", "label"])
+        self._configure_generic_tree(self.target_tree, ["target_ref", "coord_id", "code", "group", "atom_label", "label"])
 
     def _build_run_tab(self):
         tab = self.tab_run
@@ -1758,6 +1996,7 @@ class App(tk.Tk):
         self.output_summary_mode_var = tk.BooleanVar(value=True)
         self.output_summary_coord_var = tk.BooleanVar(value=True)
         self.output_target_matrix_var = tk.BooleanVar(value=True)
+        self.output_combined_target_var = tk.BooleanVar(value=True)
         self.include_alternative_var = tk.BooleanVar(value=False)
         self.include_all_target_modes_var = tk.BooleanVar(value=False)
 
@@ -1775,8 +2014,9 @@ class App(tk.Tk):
         ttk.Checkbutton(opt, text="Target summary by mode", variable=self.output_summary_mode_var).grid(row=1, column=0, sticky="w")
         ttk.Checkbutton(opt, text="Target summary by coordinate", variable=self.output_summary_coord_var).grid(row=1, column=1, sticky="w")
         ttk.Checkbutton(opt, text="Target matrix", variable=self.output_target_matrix_var).grid(row=1, column=2, sticky="w")
-        ttk.Checkbutton(opt, text="Include alternative coordinate sets (k/v)", variable=self.include_alternative_var).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
-        ttk.Checkbutton(opt, text="Include target modes below total threshold", variable=self.include_all_target_modes_var).grid(row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(opt, text="Combined target outputs (allow mixed s/k/v targets)", variable=self.output_combined_target_var).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(opt, text="Include alternative coordinate sets (k/v)", variable=self.include_alternative_var).grid(row=3, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        ttk.Checkbutton(opt, text="Include target modes below total threshold", variable=self.include_all_target_modes_var).grid(row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         thresh = ttk.LabelFrame(tab, text="Thresholds and frequency range", padding=8)
         thresh.grid(row=1, column=0, sticky="ew", padx=12, pady=8)
@@ -1852,10 +2092,7 @@ class App(tk.Tk):
         if self.ved_path and Path(self.ved_path).is_file():
             self._auto_fill_related_files(self.ved_path, only_if_missing=True, save=False)
 
-        saved_target_name = self._cfg.get("target_name", self.target_name_var.get())
-        if saved_target_name == "metal_ligand_stretch":
-            saved_target_name = "target_coordinates"
-        self.target_name_var.set(saved_target_name)
+        self.target_name_var.set(self._cfg.get("target_name", self.target_name_var.get()))
         self.metal_atoms_var.set(self._cfg.get("metal_atoms", self.metal_atoms_var.get()))
         self.ligand_atoms_var.set(self._cfg.get("ligand_atoms", self.ligand_atoms_var.get()))
         self.ligand_elements_var.set(self._cfg.get("ligand_elements", self.ligand_elements_var.get()))
@@ -1880,6 +2117,7 @@ class App(tk.Tk):
         self.output_summary_mode_var.set(bool(self._cfg.get("output_summary_mode", self.output_summary_mode_var.get())))
         self.output_summary_coord_var.set(bool(self._cfg.get("output_summary_coord", self.output_summary_coord_var.get())))
         self.output_target_matrix_var.set(bool(self._cfg.get("output_target_matrix", self.output_target_matrix_var.get())))
+        self.output_combined_target_var.set(bool(self._cfg.get("output_combined_target", self.output_combined_target_var.get())))
         self.include_alternative_var.set(bool(self._cfg.get("include_alternative", self.include_alternative_var.get())))
         self.include_all_target_modes_var.set(bool(self._cfg.get("include_all_target_modes", self.include_all_target_modes_var.get())))
 
@@ -1921,6 +2159,7 @@ class App(tk.Tk):
             cfg["output_summary_mode"] = bool(self.output_summary_mode_var.get())
             cfg["output_summary_coord"] = bool(self.output_summary_coord_var.get())
             cfg["output_target_matrix"] = bool(self.output_target_matrix_var.get())
+            cfg["output_combined_target"] = bool(self.output_combined_target_var.get())
             cfg["include_alternative"] = bool(self.include_alternative_var.get())
             cfg["include_all_target_modes"] = bool(self.include_all_target_modes_var.get())
         except Exception:
@@ -2092,7 +2331,6 @@ class App(tk.Tk):
             lines = []
             lines.append("Precheck OK")
             lines.append(f"Program version      : {APP_VERSION} ({APP_RELEASE_DATE})")
-            lines.append(f"Repository           : {APP_REPOSITORY_URL}")
             lines.append("")
             lines.append(f"VEDA modes           : {len(freqs_ved) if freqs_ved else 'not extracted'}")
             lines.append(f"PED blocks           : {len(ped_blks)}")
@@ -2139,38 +2377,27 @@ class App(tk.Tk):
 
     def _update_filter_choices(self):
         codes = sorted(set(str(r.get("code", "")).lower() for r in self.coordinate_rows if r.get("code")))
-        groups = sorted(set(str(r.get("group", "")) for r in self.coordinate_rows if r.get("group")))
-
-        code_values: List[str] = []
-        for preferred in ("s", "k", "v"):
-            if preferred in codes:
-                code_values.append(_code_filter_display(preferred))
-        code_values.extend(_code_filter_display(c) for c in codes if c not in {"s", "k", "v"})
-        code_values.append("(any)")
-
-        stre_groups = [g for g in groups if str(g).upper().startswith("STRE")]
-        other_groups = [g for g in groups if g not in stre_groups]
-        group_values = [_group_filter_display(g) for g in stre_groups + other_groups]
-        group_values.append("(any)")
-
+        groups = sorted(set(str(r.get("group", "")).upper() for r in self.coordinate_rows if r.get("group")))
+        code_values = _ordered_code_values(codes)
+        group_values = _ordered_group_values(groups)
         self.filter_code_combo.configure(values=code_values)
         self.filter_group_combo.configure(values=group_values)
 
-        current_code = _code_from_filter_display(self.filter_code_var.get())
-        if "s" in codes:
-            self.filter_code_var.set(_code_filter_display("s"))
-        elif current_code not in codes and current_code != "(any)":
-            self.filter_code_var.set("(any)")
+        current_code = _code_from_filter(self.filter_code_var.get())
+        current_group = _group_from_filter(self.filter_group_var.get())
+        if current_code not in codes and current_code != "(any)":
+            self.filter_code_var.set(_code_display("s") if "s" in codes else "(any)")
+        elif self.filter_code_var.get() not in code_values:
+            self.filter_code_var.set(_code_display(current_code) if current_code in codes else "(any)")
 
-        current_group = _group_from_filter_display(self.filter_group_var.get())
-        if stre_groups:
-            self.filter_group_var.set(_group_filter_display(stre_groups[0]))
-        elif current_group not in groups and current_group != "(any)":
-            self.filter_group_var.set("(any)")
+        if current_group not in groups and current_group != "(any)":
+            self.filter_group_var.set(_group_display("STRE") if "STRE" in groups else "(any)")
+        elif self.filter_group_var.get() not in group_values:
+            self.filter_group_var.set(_group_display(current_group) if current_group in groups else "(any)")
 
     def clear_coordinate_filters(self):
-        self.filter_code_var.set("s - standard")
-        self.filter_group_var.set("STRE - Stretching")
+        self.filter_code_var.set("(any)")
+        self.filter_group_var.set("(any)")
         self.filter_atom_var.set("")
         self.filter_element_var.set("")
         self.filter_label_var.set("")
@@ -2185,9 +2412,9 @@ class App(tk.Tk):
         if not self.coordinate_rows:
             return
 
-        code_filter = _code_from_filter_display(self.filter_code_var.get())
-        group_filter = _group_from_filter_display(self.filter_group_var.get())
-        atom_filter = set(_parse_int_list(self.filter_atom_var.get()))
+        code_filter = _code_from_filter(self.filter_code_var.get())
+        group_filter = _group_from_filter(self.filter_group_var.get())
+        atom_requirements = _parse_atom_filter_requirements(self.filter_atom_var.get())
         element_filter = set(_parse_symbol_list(self.filter_element_var.get()))
         label_filter = self.filter_label_var.get().strip().lower()
         atom_map = (self.analysis_ctx or {}).get("atom_map", {}) if self.analysis_ctx else {}
@@ -2196,10 +2423,10 @@ class App(tk.Tk):
         for i, r in enumerate(self.coordinate_rows):
             if code_filter and code_filter != "(any)" and str(r.get("code", "")).lower() != code_filter:
                 continue
-            if group_filter and group_filter != "(any)" and str(r.get("group", "")) != group_filter:
+            if group_filter and group_filter != "(any)" and str(r.get("group", "")).upper() != group_filter:
                 continue
             atoms = _parse_int_list(r.get("atoms", ""))
-            if atom_filter and not (set(atoms) & atom_filter):
+            if atom_requirements and not any(req <= set(atoms) for req in atom_requirements):
                 continue
             if element_filter:
                 els = set((atom_map.get(a, "") or "").capitalize() for a in atoms)
@@ -2220,13 +2447,23 @@ class App(tk.Tk):
     # Target coordinate helpers
     # -----------------------------
 
+    def _get_target_refs_from_text(self) -> set:
+        return set(_parse_target_refs(self.target_ids_text.get("1.0", "end")))
+
     def _get_target_ids_from_text(self) -> set:
-        return set(_parse_int_list(self.target_ids_text.get("1.0", "end")))
+        """Backward-compatible helper: return numeric IDs only."""
+        ids = set()
+        for ref in self._get_target_refs_from_text():
+            try:
+                ids.add(_split_target_ref(ref)[2])
+            except Exception:
+                continue
+        return ids
 
     def normalize_target_ids_text(self):
-        ids = sorted(self._get_target_ids_from_text())
+        refs = _sort_target_refs(self._get_target_refs_from_text())
         self.target_ids_text.delete("1.0", "end")
-        self.target_ids_text.insert("1.0", ", ".join(str(x) for x in ids))
+        self.target_ids_text.insert("1.0", ", ".join(refs))
         self.refresh_target_preview()
         self._save_current_config()
 
@@ -2243,41 +2480,58 @@ class App(tk.Tk):
         if not selected:
             messagebox.showinfo("No selection", "Select rows in the coordinate table first.")
             return
-        ids = self._get_target_ids_from_text()
+        refs = self._get_target_refs_from_text()
         for iid in selected:
             try:
                 row = self.coordinate_rows[int(iid)]
                 cid = row.get("coord_id")
-                if isinstance(cid, int):
-                    ids.add(cid)
-                else:
-                    ids.add(int(cid))
+                code = row.get("code", row.get("coord_code", "s"))
+                refs.add(_make_target_ref(code, row.get("group", row.get("coord_group", "")), cid))
             except Exception:
                 continue
+        refs = _sort_target_refs(refs)
         self.target_ids_text.delete("1.0", "end")
-        self.target_ids_text.insert("1.0", ", ".join(str(x) for x in sorted(ids)))
+        self.target_ids_text.insert("1.0", ", ".join(refs))
         self.refresh_target_preview()
         self._save_current_config()
 
-    def _detect_target_ids_by_rule(self) -> set:
+    def _detect_target_refs_by_rule(self) -> set:
         if not self.analysis_ctx:
             return set()
         atom_map = self.analysis_ctx.get("atom_map", {}) or {}
         metal_atoms = _parse_int_list(self.metal_atoms_var.get())
         ligand_atoms = _parse_int_list(self.ligand_atoms_var.get())
         ligand_elements = _parse_symbol_list(self.ligand_elements_var.get())
-        ids = set()
+        refs = set()
         for c in self.analysis_ctx.get("coords", []) or []:
             if _coord_matches_metal_ligand_stretch(c, atom_map, metal_atoms, ligand_atoms, ligand_elements):
                 cid = c.get("coord_id")
                 if isinstance(cid, int):
-                    ids.add(cid)
+                    refs.add(_make_target_ref(c.get("coord_code", "s"), c.get("coord_group", ""), cid))
+        return refs
+
+    def _detect_target_ids_by_rule(self) -> set:
+        ids = set()
+        for ref in self._detect_target_refs_by_rule():
+            try:
+                ids.add(_split_target_ref(ref)[2])
+            except Exception:
+                continue
         return ids
 
+    def _get_effective_target_refs(self) -> set:
+        refs = self._get_target_refs_from_text()
+        if not refs and bool(self.use_rule_if_empty_var.get()):
+            refs = self._detect_target_refs_by_rule()
+        return refs
+
     def _get_effective_target_ids(self) -> set:
-        ids = self._get_target_ids_from_text()
-        if not ids and bool(self.use_rule_if_empty_var.get()):
-            ids = self._detect_target_ids_by_rule()
+        ids = set()
+        for ref in self._get_effective_target_refs():
+            try:
+                ids.add(_split_target_ref(ref)[2])
+            except Exception:
+                continue
         return ids
 
     def auto_detect_target_coords(self):
@@ -2285,27 +2539,28 @@ class App(tk.Tk):
             self.precheck()
             if not self.analysis_ctx:
                 return
-        ids = sorted(self._detect_target_ids_by_rule())
-        if self.target_name_var.get().strip() in {"", "target_coordinates"}:
-            self.target_name_var.set("metal_ligand_stretch")
+        refs = _sort_target_refs(self._detect_target_refs_by_rule())
         self.target_ids_text.delete("1.0", "end")
-        self.target_ids_text.insert("1.0", ", ".join(str(x) for x in ids))
+        self.target_ids_text.insert("1.0", ", ".join(refs))
         self.refresh_target_preview()
         self._save_current_config()
-        messagebox.showinfo("Auto-detect", f"Detected {len(ids)} target coordinate IDs.")
+        messagebox.showinfo("Auto-detect", f"Detected {len(refs)} target coordinate references.")
 
     def refresh_target_preview(self):
         if not hasattr(self, "target_tree"):
             return
-        ids = self._get_effective_target_ids()
+        refs = self._get_effective_target_refs()
         rows = []
         for r in self.coordinate_rows:
             try:
                 cid = int(r.get("coord_id"))
             except Exception:
                 continue
-            if cid in ids:
+            code = str(r.get("code", r.get("coord_code", "s")) or "s").lower()
+            ref = _make_target_ref(code, r.get("group", r.get("coord_group", "")), cid)
+            if _target_ref_matches(ref, refs):
                 rows.append({
+                    "target_ref": ref,
                     "coord_id": cid,
                     "code": r.get("code", ""),
                     "group": r.get("group", ""),
@@ -2380,6 +2635,7 @@ class App(tk.Tk):
             "output_summary_mode": bool(self.output_summary_mode_var.get()),
             "output_summary_coord": bool(self.output_summary_coord_var.get()),
             "output_target_matrix": bool(self.output_target_matrix_var.get()),
+            "output_combined_target": bool(self.output_combined_target_var.get()),
             "include_alternative": bool(self.include_alternative_var.get()),
             "include_all_target_modes": bool(self.include_all_target_modes_var.get()),
         }
@@ -2441,20 +2697,528 @@ class App(tk.Tk):
         }
         return meta, caution_msgs
 
-    def _coord_info_from_col(self, colpos_to_info: Dict[int, dict], col_pos: int, atom_map: Dict[int, str]) -> dict:
+    def _coord_info_from_col(self, colpos_to_info: Dict[int, dict], col_pos: int, atom_map: Dict[int, str], preferred_refs: Optional[set] = None) -> dict:
         info = colpos_to_info.get(col_pos, {"ped_col": col_pos, "coord_id": col_pos, "coord_code": "", "coord": None})
         c_obj = info.get("coord")
         cid = info.get("coord_id", col_pos)
+        if preferred_refs:
+            for cand in info.get("coord_candidates", []) or []:
+                try:
+                    cand_ref = _make_target_ref(cand.get("coord_code", "s"), cand.get("coord_group", ""), cid)
+                    if _target_ref_matches(cand_ref, preferred_refs):
+                        c_obj = cand
+                        break
+                except Exception:
+                    continue
         return {
             "ped_col": col_pos,
             "coord_id": cid,
             "coord_code": info.get("coord_code", "") or _coord_code(c_obj),
+            "target_ref": _make_target_ref(info.get("coord_code", "") or _coord_code(c_obj) or "s", _coord_group(c_obj), cid),
             "coord_group": _coord_group(c_obj),
             "atoms": " ".join(str(a) for a in ((c_obj or {}).get("atoms", []) or [])),
             "atom_label": _coord_atom_label(c_obj, atom_map),
             "label": _coord_label(c_obj, atom_map),
             "coord": c_obj,
         }
+
+    def _generate_combined_target_outputs(self, base: Path, ctx: dict, ped_blocks: List[dict], coords: List[dict],
+                                          atom_map: Dict[int, str], target_refs: set, opts: dict) -> Tuple[List[str], pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Generate combined target outputs that may mix s/k/v target references.
+
+        Per-coordinate-set outputs interpret all selected targets within one coordinate set.
+        This combined output instead treats the target list literally as code-qualified
+        references (for example s:83 plus k:126) and sums only those exact references.
+        """
+        saved_files: List[str] = []
+        if not target_refs or not opts.get("output_combined_target", True):
+            return saved_files, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+        combined_hits: List[dict] = []
+        mode_acc: Dict[Any, dict] = {}
+        coord_acc: Dict[str, dict] = {}
+        matrix_acc: Dict[Any, dict] = {}
+
+        # Exact, code-qualified DD2 lookup.  Combined output must not let
+        # the usual alternative->standard fallback relabel k/v targets as s
+        # targets or vice versa.  For example, s:83 and k:126 are distinct
+        # target coordinates even if their bare coord_id values overlap with
+        # other coordinate sets.
+        coord_by_ref: Dict[str, dict] = {}
+        for c in coords:
+            cid = c.get("coord_id")
+            code0 = str(c.get("coord_code", "s") or "s").lower()
+            if isinstance(cid, int):
+                coord_by_ref[_make_target_ref(code0, c.get("coord_group", ""), cid).lower()] = c
+
+        requested_refs = set(str(r).lower() for r in target_refs)
+        found_refs = set()
+
+        def _block_code(b: dict) -> str:
+            return str(b.get("target_code", "s") or "s").strip().lower() or "s"
+
+        def _block_has_coord_id(b: dict, cid: int) -> bool:
+            cols = b.get("col_ids", []) or []
+            if not cols:
+                # If the .ved did not expose explicit column IDs, we cannot
+                # prove absence here. Keep the block as a possible matrix source.
+                return True
+            try:
+                return int(cid) in set(int(x) for x in cols)
+            except Exception:
+                return False
+
+        standard_blocks = [b for b in ped_blocks if _is_standard_ped_block(b)]
+        if not standard_blocks and ped_blocks:
+            standard_blocks = [ped_blocks[0]]
+
+        # Plan combined scans per target_ref, not just per coordinate code.
+        # This is crucial when an explicit alternative PED block exists but does
+        # not contain the requested alternative coord_id, while the standard PED
+        # matrix can still be reinterpreted with the k/v DD2 mapping.  The older
+        # code chose one block per code and therefore left cases like k:126 as
+        # missing even though the standard PED matrix had column 126.
+        view_map: Dict[Tuple[str, int], dict] = {}
+        view_refs: Dict[Tuple[str, int], set] = {}
+        view_reinterp: Dict[Tuple[str, int], bool] = {}
+
+        for ref in _sort_target_refs(requested_refs):
+            try:
+                code_part, _group_part, cid_int = _split_target_ref(ref)
+            except Exception:
+                continue
+
+            exact_blocks = [b for b in ped_blocks if _block_code(b) == code_part]
+            candidates = [b for b in exact_blocks if _block_has_coord_id(b, cid_int)]
+            reinterp = False
+
+            if not candidates:
+                candidates = [b for b in standard_blocks if _block_has_coord_id(b, cid_int)]
+                reinterp = True
+
+            if not candidates:
+                candidates = exact_blocks or standard_blocks or list(ped_blocks or [])[:1]
+                reinterp = bool(candidates and _block_code(candidates[0]) != code_part)
+
+            if not candidates:
+                continue
+
+            ped_src = candidates[0]
+            key = (code_part, id(ped_src))
+            view_map[key] = ped_src
+            view_refs.setdefault(key, set()).add(str(ref).lower())
+            view_reinterp[key] = bool(reinterp or _block_code(ped_src) != code_part)
+
+        combined_views: List[Tuple[str, dict, set, bool]] = [
+            (code, view_map[(code, bid)], view_refs[(code, bid)], view_reinterp.get((code, bid), False))
+            for code, bid in view_map.keys()
+        ]
+
+        for code, ped_blk, refs_for_code, view_reinterpreted in combined_views:
+            header_str = ped_blk.get("header", "PED")
+            code = str(code or "s").lower()
+            code_label = _code_output_label(code)
+            refs_for_code = set(str(r).lower() for r in refs_for_code)
+            if not refs_for_code:
+                continue
+
+            if view_reinterpreted and code != str(ped_blk.get("target_code", "s") or "s").lower():
+                log_message(f"[combined targets] Reinterpreting PED matrix '{header_str}' with DD2 coordinate set {code} ({code_label}).")
+
+            ped_mat_norm, sums, notes = _ped_percent_matrix_with_check(ped_blk.get("matrix", []))
+            ped_col_ids: List[int] = ped_blk.get("col_ids", []) or []
+            if not ped_col_ids:
+                ped_col_ids = list(range(1, int(ped_blk.get("n_cols", 0)) + 1))
+                log_caution(f"[{header_str}] PED column IDs missing; combined output falls back to sequential numbering.")
+
+            colpos_to_info, colmap_cautions = build_ped_column_coord_map(ped_col_ids, coords, target_code=code)
+            for c in colmap_cautions:
+                log_caution(f"[{header_str} - combined {code.upper()} targets] {c}")
+
+            for row_index, row in enumerate(ped_mat_norm):
+                v_mode = row_index + 1
+                meta, base_cautions = self._mode_meta(ctx, v_mode, row_index)
+                freq_for_filter = float(meta.get("freq_qc") or meta.get("freq_veda") or 0.0)
+                mode_in_range = _freq_in_range(freq_for_filter, opts["freq_min"], opts["freq_max"])
+                if not mode_in_range:
+                    continue
+
+                contribs: List[Tuple[float, int]] = []
+                for col_idx_0, val in enumerate(row):
+                    contribs.append((float(val), col_idx_0 + 1))
+                contribs.sort(key=lambda x: x[0], reverse=True)
+
+                mode_key = meta.get("mode_veda") or v_mode
+                macc = mode_acc.setdefault(mode_key, {
+                    "target_set_name": opts["target_name"],
+                    "interpretation": "combined",
+                    "ped_block": "mixed s/k/v",
+                    **meta,
+                    "total_target_PED": 0.0,
+                    "max_target_PED": 0.0,
+                    "best_target_rank": "",
+                    "_terms": [],
+                    "_detected": set(),
+                    "_blocks": set(),
+                })
+                mat = matrix_acc.setdefault(mode_key, {
+                    "target_set_name": opts["target_name"],
+                    "interpretation": "combined",
+                    "ped_block": "mixed s/k/v",
+                    **meta,
+                })
+
+                cumulative = 0.0
+                for rank, (val, col_pos) in enumerate(contribs, start=1):
+                    cumulative += val
+                    cinfo0 = self._coord_info_from_col(colpos_to_info, col_pos, atom_map, target_refs)
+                    cid_raw = cinfo0.get("coord_id", "")
+                    try:
+                        cid_int = int(cid_raw)
+                    except Exception:
+                        cid_int = -1
+
+                    # In combined mode, match by code+group+coord_id.  The same
+                    # code+coord_id can be reused by DD2 for different groups
+                    # (for example k:STRE:126 and k:BEND:126), so group is required.
+                    matching_refs = []
+                    for req in refs_for_code:
+                        try:
+                            req_code, req_group, req_cid = _split_target_ref(req)
+                        except Exception:
+                            continue
+                        if req_code == code and int(req_cid) == int(cid_int):
+                            matching_refs.append(f"{req_code}:{req_group}:{req_cid}")
+                    if not matching_refs:
+                        continue
+
+                    for target_ref in matching_refs:
+                        c_obj_exact = coord_by_ref.get(str(target_ref).lower())
+                        if c_obj_exact is not None:
+                            cinfo = {
+                                "ped_col": col_pos,
+                                "target_ref": target_ref,
+                                "coord_id": cid_int,
+                                "coord_code": code,
+                                "coord_group": _coord_group(c_obj_exact),
+                                "atoms": " ".join(str(a) for a in (c_obj_exact.get("atoms", []) or [])),
+                                "atom_label": _coord_atom_label(c_obj_exact, atom_map),
+                                "label": _coord_label(c_obj_exact, atom_map),
+                            }
+                        else:
+                            cinfo = dict(cinfo0)
+                            cinfo["target_ref"] = target_ref
+                            cinfo["coord_code"] = code
+                        found_refs.add(str(target_ref).lower())
+
+                        macc["total_target_PED"] += val
+                        macc["_blocks"].add(code_label)
+                        if val > macc["max_target_PED"]:
+                            macc["max_target_PED"] = val
+                        if macc["best_target_rank"] == "":
+                            macc["best_target_rank"] = rank
+                        mat[f"coord_{str(target_ref).replace(':', '_')}"] = round(val, 6)
+
+                        if val >= opts["target_min_ped"]:
+                            macc["_detected"].add(target_ref)
+                            macc["_terms"].append((val, rank, cinfo.get("label", ""), target_ref, code_label))
+                            if opts["output_target_hits"]:
+                                combined_hits.append({
+                                    "target_set_name": opts["target_name"],
+                                    "interpretation": "combined",
+                                    "source_interpretation": code_label,
+                                    "ped_block": header_str,
+                                    **meta,
+                                    "PED_rank": rank,
+                                    "PED_value": round(val, 6),
+                                    "cumulative_PED": round(cumulative, 6),
+                                    **{k: cinfo.get(k, "") for k in ("ped_col", "target_ref", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
+                                })
+
+                            acc = coord_acc.setdefault(target_ref, {
+                                "target_set_name": opts["target_name"],
+                                "interpretation": "combined",
+                                "source_interpretation": code_label,
+                                "ped_block": header_str,
+                                "target_ref": target_ref,
+                                "coord_id": cid_int,
+                                "coord_code": cinfo.get("coord_code", ""),
+                                "coord_group": cinfo.get("coord_group", ""),
+                                "atoms": cinfo.get("atoms", ""),
+                                "atom_label": cinfo.get("atom_label", ""),
+                                "label": cinfo.get("label", ""),
+                                "sum_PED_in_range": 0.0,
+                                "max_PED": 0.0,
+                                "mode_qc_at_max": "",
+                                "mode_veda_at_max": "",
+                                "freq_qc_at_max": 0.0,
+                                "freq_veda_at_max": 0.0,
+                                "weight_freq_sum": 0.0,
+                                "weight_sum": 0.0,
+                                "mode_terms": [],
+                            })
+                            acc["sum_PED_in_range"] += val
+                            acc["weight_freq_sum"] += val * freq_for_filter
+                            acc["weight_sum"] += val
+                            acc["mode_terms"].append((val, meta.get("mode_qc", ""), meta.get("mode_veda", ""), freq_for_filter, rank, code_label))
+                            if val > acc["max_PED"]:
+                                acc["max_PED"] = val
+                                acc["mode_qc_at_max"] = meta.get("mode_qc", "")
+                                acc["mode_veda_at_max"] = meta.get("mode_veda", "")
+                                acc["freq_qc_at_max"] = meta.get("freq_qc", 0.0)
+                                acc["freq_veda_at_max"] = meta.get("freq_veda", 0.0)
+
+        # If a requested k/v target was not found in a parsed PED matrix, try the
+        # coordinate-centered terms stored in DD2.  Some VEDA outputs contain
+        # alternative coordinates in DD2 but do not provide separate alternative
+        # PED matrices in the .ved file.  Without this fallback, a mixed target
+        # such as s:83 + k:126 would report k:126 as missing even though DD2
+        # contains its mode contributions.
+        dd2_fallback_added = 0
+        freqs_ved_for_terms = ctx.get("freqs_ved", []) or []
+
+        def _term_tag_to_veda_mode(tag: Any) -> Optional[int]:
+            raw = str(tag).strip()
+            if not raw:
+                return None
+            # Direct mode labels such as 126, V126, F126, mode126.
+            m_ints = re.findall(r"[+-]?\d+", raw)
+            if m_ints:
+                try:
+                    cand = int(m_ints[-1])
+                    if cand >= 1:
+                        # If the value is a plausible mode index, use it.
+                        n_hint = int((ctx.get("ped_blocks", [{}]) or [{}])[0].get("n_modes", 0) or len(freqs_ved_for_terms) or 0)
+                        if n_hint <= 0 or cand <= n_hint:
+                            return cand
+                except Exception:
+                    pass
+            # Frequency labels such as 594.0: map to nearest VEDA frequency.
+            try:
+                fval = float(raw.replace("D", "E").replace("d", "e"))
+                if freqs_ved_for_terms:
+                    pairs = [(abs(float(f) - fval), i + 1) for i, f in enumerate(freqs_ved_for_terms)]
+                    pairs.sort(key=lambda x: x[0])
+                    if pairs and pairs[0][0] <= 5.0:
+                        return pairs[0][1]
+            except Exception:
+                pass
+            return None
+
+        missing_before_dd2 = set(requested_refs - found_refs)
+        for target_ref in _sort_target_refs(missing_before_dd2):
+            c_obj = coord_by_ref.get(str(target_ref).lower())
+            if not c_obj:
+                continue
+            terms_dd2 = c_obj.get("terms", []) or []
+            if not terms_dd2:
+                continue
+            code = str(c_obj.get("coord_code", "s") or "s").lower()
+            code_label = _code_output_label(code)
+            source_label = f"dd2_terms_{code_label}"
+            cinfo = {
+                "ped_col": "DD2",
+                "target_ref": str(target_ref).lower(),
+                "coord_id": c_obj.get("coord_id", ""),
+                "coord_code": code,
+                "coord_group": _coord_group(c_obj),
+                "atoms": " ".join(str(a) for a in (c_obj.get("atoms", []) or [])),
+                "atom_label": _coord_atom_label(c_obj, atom_map),
+                "label": _coord_label(c_obj, atom_map),
+            }
+            for tag, pct in terms_dd2:
+                try:
+                    val = abs(float(pct))
+                except Exception:
+                    continue
+                v_mode = _term_tag_to_veda_mode(tag)
+                if not v_mode:
+                    continue
+                meta, base_cautions = self._mode_meta(ctx, int(v_mode), int(v_mode) - 1)
+                freq_for_filter = float(meta.get("freq_qc") or meta.get("freq_veda") or 0.0)
+                if not _freq_in_range(freq_for_filter, opts["freq_min"], opts["freq_max"]):
+                    continue
+
+                mode_key = meta.get("mode_veda") or int(v_mode)
+                macc = mode_acc.setdefault(mode_key, {
+                    "target_set_name": opts["target_name"],
+                    "interpretation": "combined",
+                    "ped_block": "mixed s/k/v",
+                    **meta,
+                    "total_target_PED": 0.0,
+                    "max_target_PED": 0.0,
+                    "best_target_rank": "",
+                    "_terms": [],
+                    "_detected": set(),
+                    "_blocks": set(),
+                })
+                mat = matrix_acc.setdefault(mode_key, {
+                    "target_set_name": opts["target_name"],
+                    "interpretation": "combined",
+                    "ped_block": "mixed s/k/v",
+                    **meta,
+                })
+
+                found_refs.add(str(target_ref).lower())
+                macc["total_target_PED"] += val
+                macc["_blocks"].add(source_label)
+                if val > macc["max_target_PED"]:
+                    macc["max_target_PED"] = val
+                if macc["best_target_rank"] == "":
+                    macc["best_target_rank"] = "DD2"
+                mat[f"coord_{str(target_ref).replace(':', '_')}"] = round(val, 6)
+
+                if val >= opts["target_min_ped"]:
+                    macc["_detected"].add(str(target_ref).lower())
+                    macc["_terms"].append((val, "DD2", cinfo.get("label", ""), str(target_ref).lower(), source_label))
+                    if opts["output_target_hits"]:
+                        combined_hits.append({
+                            "target_set_name": opts["target_name"],
+                            "interpretation": "combined",
+                            "source_interpretation": source_label,
+                            "ped_block": "DD2 terms",
+                            **meta,
+                            "PED_rank": "DD2",
+                            "PED_value": round(val, 6),
+                            "cumulative_PED": "",
+                            **{k: cinfo.get(k, "") for k in ("ped_col", "target_ref", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
+                        })
+
+                    acc = coord_acc.setdefault(str(target_ref).lower(), {
+                        "target_set_name": opts["target_name"],
+                        "interpretation": "combined",
+                        "source_interpretation": source_label,
+                        "ped_block": "DD2 terms",
+                        "target_ref": str(target_ref).lower(),
+                        "coord_id": cinfo.get("coord_id", ""),
+                        "coord_code": code,
+                        "coord_group": cinfo.get("coord_group", ""),
+                        "atoms": cinfo.get("atoms", ""),
+                        "atom_label": cinfo.get("atom_label", ""),
+                        "label": cinfo.get("label", ""),
+                        "sum_PED_in_range": 0.0,
+                        "max_PED": 0.0,
+                        "mode_qc_at_max": "",
+                        "mode_veda_at_max": "",
+                        "freq_qc_at_max": 0.0,
+                        "freq_veda_at_max": 0.0,
+                        "weight_freq_sum": 0.0,
+                        "weight_sum": 0.0,
+                        "mode_terms": [],
+                    })
+                    acc["sum_PED_in_range"] += val
+                    acc["weight_freq_sum"] += val * freq_for_filter
+                    acc["weight_sum"] += val
+                    acc["mode_terms"].append((val, meta.get("mode_qc", ""), meta.get("mode_veda", ""), freq_for_filter, "DD2", source_label))
+                    if val > acc["max_PED"]:
+                        acc["max_PED"] = val
+                        acc["mode_qc_at_max"] = meta.get("mode_qc", "")
+                        acc["mode_veda_at_max"] = meta.get("mode_veda", "")
+                        acc["freq_qc_at_max"] = meta.get("freq_qc", 0.0)
+                        acc["freq_veda_at_max"] = meta.get("freq_veda", 0.0)
+                    dd2_fallback_added += 1
+
+        if dd2_fallback_added:
+            log_message(f"[combined targets] Added {dd2_fallback_added} contribution(s) from DD2 coordinate terms for targets not found in parsed PED blocks.")
+
+        summary_mode_rows: List[dict] = []
+        matrix_rows: List[dict] = []
+        for mode_key, acc in mode_acc.items():
+            total = acc.get("total_target_PED", 0.0)
+            if not (opts["include_all_target_modes"] or total >= opts["target_total_min_ped"]):
+                continue
+            terms = sorted(acc.get("_terms", []), key=lambda x: x[0], reverse=True)
+            top_terms = "; ".join(
+                f"{tref}:{label}={val:.1f}% ({src}, rank {rank})" for val, rank, label, tref, src in terms[:8]
+            )
+            row = {k: v for k, v in acc.items() if not str(k).startswith("_")}
+            row["ped_block"] = "+".join(sorted(acc.get("_blocks", []))) or "mixed s/k/v"
+            row["requested_target_refs"] = ", ".join(_sort_target_refs(requested_refs))
+            row["found_target_refs"] = ", ".join(_sort_target_refs(found_refs))
+            row["missing_target_refs"] = ", ".join(_sort_target_refs(requested_refs - found_refs))
+            row["total_target_PED"] = round(total, 6)
+            row["max_target_PED"] = round(acc.get("max_target_PED", 0.0), 6)
+            row["n_target_coords_detected"] = len(acc.get("_detected", set()))
+            row["best_target_rank"] = acc.get("best_target_rank", "")
+            row["top_target_terms"] = top_terms
+            summary_mode_rows.append(row)
+
+            mat = matrix_acc.get(mode_key, {}).copy()
+            mat["requested_target_refs"] = row.get("requested_target_refs", "")
+            mat["found_target_refs"] = row.get("found_target_refs", "")
+            mat["missing_target_refs"] = row.get("missing_target_refs", "")
+            mat["total_target_PED"] = row["total_target_PED"]
+            mat["max_target_PED"] = row["max_target_PED"]
+            mat["best_target_rank"] = row["best_target_rank"]
+            matrix_rows.append(mat)
+
+        summary_coord_rows: List[dict] = []
+        for tref, acc in sorted(coord_acc.items(), key=lambda kv: str(kv[0])):
+            terms = sorted(acc.get("mode_terms", []), key=lambda x: x[0], reverse=True)
+            top_modes = "; ".join(
+                f"QC{mq or ''}/V{mv}@{fr:.1f}:{val:.1f}% ({src}, rank {rk})" for val, mq, mv, fr, rk, src in terms[:10]
+            )
+            weight_sum = acc.get("weight_sum", 0.0) or 0.0
+            weighted_mean_freq = (acc.get("weight_freq_sum", 0.0) / weight_sum) if weight_sum > 0 else ""
+            summary_coord_rows.append({
+                "target_set_name": acc.get("target_set_name", ""),
+                "interpretation": "combined",
+                "source_interpretation": acc.get("source_interpretation", ""),
+                "ped_block": acc.get("ped_block", ""),
+                "target_ref": acc.get("target_ref", ""),
+                "coord_id": acc.get("coord_id", ""),
+                "coord_code": acc.get("coord_code", ""),
+                "coord_group": acc.get("coord_group", ""),
+                "atoms": acc.get("atoms", ""),
+                "atom_label": acc.get("atom_label", ""),
+                "label": acc.get("label", ""),
+                "max_PED": round(acc.get("max_PED", 0.0), 6),
+                "mode_qc_at_max": acc.get("mode_qc_at_max", ""),
+                "mode_veda_at_max": acc.get("mode_veda_at_max", ""),
+                "freq_qc_at_max": acc.get("freq_qc_at_max", 0.0),
+                "freq_veda_at_max": acc.get("freq_veda_at_max", 0.0),
+                "sum_PED_in_range": round(acc.get("sum_PED_in_range", 0.0), 6),
+                "weighted_mean_freq": weighted_mean_freq,
+                "n_modes_detected": len(terms),
+                "top_modes": top_modes,
+            })
+
+        df_hits = pd.DataFrame(combined_hits)
+        df_sum_mode = pd.DataFrame(summary_mode_rows)
+        df_sum_coord = pd.DataFrame(summary_coord_rows)
+        df_matrix = pd.DataFrame(matrix_rows)
+
+        if not df_sum_mode.empty:
+            df_sum_mode = df_sum_mode.sort_values(["total_target_PED", "freq_qc"], ascending=[False, True])
+        if not df_sum_coord.empty:
+            df_sum_coord = df_sum_coord.sort_values(["sum_PED_in_range", "max_PED"], ascending=[False, False])
+
+        if opts.get("output_target_hits"):
+            save_path = self._output_path(base, "_target_hits_combined.csv")
+            df_hits.to_csv(save_path, index=False, encoding="utf-8-sig")
+            saved_files.append(save_path)
+            log_message(f"Saved combined target hits: {save_path}")
+        if opts.get("output_summary_mode"):
+            save_path = self._output_path(base, "_target_summary_by_mode_combined.csv")
+            df_sum_mode.to_csv(save_path, index=False, encoding="utf-8-sig")
+            saved_files.append(save_path)
+            log_message(f"Saved combined target summary by mode: {save_path}")
+        if opts.get("output_summary_coord"):
+            save_path = self._output_path(base, "_target_summary_by_coord_combined.csv")
+            df_sum_coord.to_csv(save_path, index=False, encoding="utf-8-sig")
+            saved_files.append(save_path)
+            log_message(f"Saved combined target summary by coordinate: {save_path}")
+        missing_refs = requested_refs - found_refs
+        if missing_refs:
+            log_caution("[combined targets] Requested target references not found in matching PED blocks: " + ", ".join(_sort_target_refs(missing_refs)))
+
+        if opts.get("output_target_matrix"):
+            save_path = self._output_path(base, "_target_matrix_combined.csv")
+            df_matrix.to_csv(save_path, index=False, encoding="utf-8-sig")
+            saved_files.append(save_path)
+            log_message(f"Saved combined target matrix: {save_path}")
+
+        return saved_files, df_sum_mode, df_hits, df_sum_coord
 
     # -----------------------------
     # Main run
@@ -2472,8 +3236,9 @@ class App(tk.Tk):
             messagebox.showwarning("No output", "Select at least one output option.")
             return
 
+        target_refs = self._get_effective_target_refs()
         target_ids = self._get_effective_target_ids()
-        if not target_ids and any(opts[k] for k in ("output_target_hits", "output_summary_mode", "output_summary_coord", "output_target_matrix")):
+        if not target_refs and any(opts[k] for k in ("output_target_hits", "output_summary_mode", "output_summary_coord", "output_target_matrix")):
             messagebox.showwarning("No target coordinates", "No target coordinate IDs were selected or detected. Target outputs will be empty.")
 
         try:
@@ -2487,29 +3252,35 @@ class App(tk.Tk):
             coords = ctx.get("coords", []) or []
 
             if opts.get("include_alternative"):
-                available_codes = list(available_codes_all)
-                ped_blocks = list(ped_blocks_all)
+                output_codes = [str(c).lower() for c in available_codes_all]
             else:
-                available_codes = [c for c in available_codes_all if str(c).lower() == "s"]
-                if not available_codes:
-                    available_codes = [available_codes_all[0]]
+                output_codes = [c for c in [str(x).lower() for x in available_codes_all] if c == "s"]
+                if not output_codes:
+                    output_codes = [str(available_codes_all[0]).lower()]
                     log_caution("Standard coordinate code 's' was not found; using the first available DD2 coordinate code.")
 
-                ped_blocks = [
-                    b for b in ped_blocks_all
-                    if str(b.get("target_code", "s")).lower() == "s"
-                    and "ALTERNATIVE" not in str(b.get("header", "")).upper()
-                ]
-                if not ped_blocks and ped_blocks_all:
-                    ped_blocks = [ped_blocks_all[0]]
-                    log_caution("Standard PED block was not found; using the first available PED block.")
+            ped_blocks = list(ped_blocks_all)
+            if not ped_blocks:
+                raise ValueError("No PED matrix found in prechecked context.")
+
+            # Build coordinate-set interpretation views.  A view is a pair of a
+            # coordinate-set code (s/k/v) and the PED matrix used as the numeric
+            # source.  If the .ved file does not contain an explicit alternative
+            # PED block, k/v are still interpreted by applying k/v DD2 labels to
+            # the standard PED matrix.
+            ped_views: List[Tuple[str, dict, bool]] = []
+            for code in output_codes:
+                ped_src, reinterp = _select_ped_block_for_coordinate_code(ped_blocks, code)
+                if ped_src is None:
+                    continue
+                ped_views.append((str(code).lower(), ped_src, bool(reinterp)))
 
             saved_files: List[str] = []
             preview_summary_mode: List[pd.DataFrame] = []
             preview_hits: List[pd.DataFrame] = []
             preview_summary_coord: List[pd.DataFrame] = []
 
-            for p_idx, ped_blk in enumerate(ped_blocks):
+            for p_idx, (view_code, ped_blk, view_reinterpreted) in enumerate(ped_views):
                 header_str = ped_blk.get("header", "PED")
                 ped_mat_norm, sums, notes = _ped_percent_matrix_with_check(ped_blk.get("matrix", []))
                 ped_col_ids: List[int] = ped_blk.get("col_ids", []) or []
@@ -2517,13 +3288,15 @@ class App(tk.Tk):
                     ped_col_ids = list(range(1, int(ped_blk.get("n_cols", 0)) + 1))
                     log_caution(f"[{header_str}] PED column IDs missing; falling back to sequential numbering.")
 
-                block_suffix = "" if len(ped_blocks) == 1 else f"_block{p_idx + 1}"
+                block_suffix = ""
 
-                for code in available_codes:
+                for code in [view_code]:
                     code_label = _code_output_label(code)
                     colpos_to_info, colmap_cautions = build_ped_column_coord_map(ped_col_ids, coords, target_code=code)
                     for c in colmap_cautions:
                         log_caution(f"[{header_str} - {code.upper()} interpretation] {c}")
+                    if view_reinterpreted and code != str(ped_blk.get("target_code", "s") or "s").lower():
+                        log_message(f"[{header_str}] Reinterpreting PED matrix with DD2 coordinate set {code} ({code_label}).")
 
                     standard_rows: List[dict] = []
                     long_rows: List[dict] = []
@@ -2567,13 +3340,14 @@ class App(tk.Tk):
 
                         for rank, (val, col_pos) in enumerate(contribs, start=1):
                             cumulative += val
-                            cinfo = self._coord_info_from_col(colpos_to_info, col_pos, atom_map)
+                            cinfo = self._coord_info_from_col(colpos_to_info, col_pos, atom_map, target_refs)
                             cid_raw = cinfo.get("coord_id", "")
                             try:
                                 cid_int = int(cid_raw)
                             except Exception:
                                 cid_int = -1
-                            is_target = cid_int in target_ids
+                            target_ref = cinfo.get("target_ref", _make_target_ref(cinfo.get("coord_code", "s"), cinfo.get("coord_group", ""), cid_int))
+                            is_target = _target_ref_matches(target_ref, target_refs)
 
                             if opts["output_long"] and (val >= opts["long_min_ped"] or (is_target and val > 1.0e-12)):
                                 long_rows.append({
@@ -2585,7 +3359,7 @@ class App(tk.Tk):
                                     "cumulative_PED": round(cumulative, 6),
                                     "is_target": bool(is_target),
                                     "target_set_name": opts["target_name"] if is_target else "",
-                                    **{k: cinfo.get(k, "") for k in ("ped_col", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
+                                    **{k: cinfo.get(k, "") for k in ("ped_col", "target_ref", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
                                 })
 
                             if is_target:
@@ -2594,10 +3368,10 @@ class App(tk.Tk):
                                     target_max = val
                                 if best_target_rank == "":
                                     best_target_rank = rank
-                                matrix_entry[f"coord_{cid_int}"] = round(val, 6)
+                                matrix_entry[f"coord_{str(target_ref).replace(':', '_')}"] = round(val, 6)
                                 if val >= opts["target_min_ped"]:
-                                    target_coords_detected.add(cid_int)
-                                    target_terms_for_mode.append((val, rank, cinfo.get("label", ""), cid_int))
+                                    target_coords_detected.add(target_ref)
+                                    target_terms_for_mode.append((val, rank, cinfo.get("label", ""), target_ref))
                                     if mode_in_range and opts["output_target_hits"]:
                                         target_hits.append({
                                             "target_set_name": opts["target_name"],
@@ -2607,11 +3381,12 @@ class App(tk.Tk):
                                             "PED_rank": rank,
                                             "PED_value": round(val, 6),
                                             "cumulative_PED": round(cumulative, 6),
-                                            **{k: cinfo.get(k, "") for k in ("ped_col", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
+                                            **{k: cinfo.get(k, "") for k in ("ped_col", "target_ref", "coord_id", "coord_code", "coord_group", "atoms", "atom_label", "label")},
                                         })
                                     if mode_in_range:
-                                        acc = coord_acc.setdefault(cid_int, {
+                                        acc = coord_acc.setdefault(target_ref, {
                                             "target_set_name": opts["target_name"],
+                                            "target_ref": target_ref,
                                             "interpretation": code_label,
                                             "ped_block": header_str,
                                             "coord_id": cid_int,
@@ -2643,12 +3418,12 @@ class App(tk.Tk):
 
                         target_terms_for_mode.sort(key=lambda x: x[0], reverse=True)
                         top_target_terms = "; ".join(
-                            f"{label}={val:.1f}% (rank {rank})" for val, rank, label, cid in target_terms_for_mode[:8]
+                            f"{cid}:{label}={val:.1f}% (rank {rank})" for val, rank, label, cid in target_terms_for_mode[:8]
                         )
 
-                        standard_entry["target_set_name"] = opts["target_name"] if target_ids else ""
-                        standard_entry["total_target_PED"] = round(target_total, 6) if target_ids else ""
-                        standard_entry["max_target_PED"] = round(target_max, 6) if target_ids else ""
+                        standard_entry["target_set_name"] = opts["target_name"] if target_refs else ""
+                        standard_entry["total_target_PED"] = round(target_total, 6) if target_refs else ""
+                        standard_entry["max_target_PED"] = round(target_max, 6) if target_refs else ""
                         standard_entry["best_target_rank"] = best_target_rank
                         standard_entry["top_target_terms"] = top_target_terms
 
@@ -2663,13 +3438,14 @@ class App(tk.Tk):
                                 break
                             if val < opts["standard_min_ped"]:
                                 break
-                            cinfo = self._coord_info_from_col(colpos_to_info, col_pos, atom_map)
+                            cinfo = self._coord_info_from_col(colpos_to_info, col_pos, atom_map, target_refs)
                             if cinfo.get("label") == "UNKNOWN":
                                 unknown_in_top += 1
                             rnum = rank_out + 1
                             standard_entry[f"PED{rnum}_col"] = int(col_pos)
                             standard_entry[f"PED{rnum}_coord_id"] = cinfo.get("coord_id", "")
                             standard_entry[f"PED{rnum}_coord_code"] = cinfo.get("coord_code", "")
+                            standard_entry[f"PED{rnum}_target_ref"] = cinfo.get("target_ref", "")
                             standard_entry[f"PED{rnum}_label"] = cinfo.get("label", "")
                             standard_entry[f"PED{rnum}_val"] = round(val, 1)
                             rank_out += 1
@@ -2679,7 +3455,7 @@ class App(tk.Tk):
                         standard_entry["caution"] = "; ".join(caution_msgs)
                         standard_rows.append(standard_entry)
 
-                        if target_ids and mode_in_range:
+                        if target_refs and mode_in_range:
                             if opts["include_all_target_modes"] or target_total >= opts["target_total_min_ped"]:
                                 summary_mode_rows.append({
                                     "target_set_name": opts["target_name"],
@@ -2699,7 +3475,7 @@ class App(tk.Tk):
                                     matrix_rows.append(matrix_entry)
 
                     summary_coord_rows: List[dict] = []
-                    for cid, acc in sorted(coord_acc.items(), key=lambda kv: kv[0]):
+                    for tref, acc in sorted(coord_acc.items(), key=lambda kv: str(kv[0])):
                         terms = sorted(acc.get("mode_terms", []), key=lambda x: x[0], reverse=True)
                         top_modes = "; ".join(
                             f"QC{mq or ''}/V{mv}@{fr:.1f}:{val:.1f}% (rank {rk})" for val, mq, mv, fr, rk in terms[:10]
@@ -2710,7 +3486,8 @@ class App(tk.Tk):
                             "target_set_name": acc.get("target_set_name", ""),
                             "interpretation": acc.get("interpretation", ""),
                             "ped_block": acc.get("ped_block", ""),
-                            "coord_id": cid,
+                            "target_ref": acc.get("target_ref", ""),
+                            "coord_id": acc.get("coord_id", ""),
                             "coord_code": acc.get("coord_code", ""),
                             "coord_group": acc.get("coord_group", ""),
                             "atoms": acc.get("atoms", ""),
@@ -2737,7 +3514,7 @@ class App(tk.Tk):
                         ]
                         top_cols: List[str] = []
                         for r in range(1, opts["top_n"] + 1):
-                            top_cols.extend([f"PED{r}_col", f"PED{r}_coord_id", f"PED{r}_coord_code", f"PED{r}_label", f"PED{r}_val"])
+                            top_cols.extend([f"PED{r}_col", f"PED{r}_coord_id", f"PED{r}_coord_code", f"PED{r}_target_ref", f"PED{r}_label", f"PED{r}_val"])
                         ordered = [c for c in core_cols + top_cols if c in df_standard.columns]
                         df_standard = df_standard[ordered]
                         save_path = self._output_path(base, f"_PED_table_{code_label}{block_suffix}.csv")
@@ -2786,6 +3563,18 @@ class App(tk.Tk):
                         df_matrix.to_csv(save_path, index=False, encoding="utf-8-sig")
                         saved_files.append(save_path)
                         log_message(f"Saved target matrix: {save_path}")
+
+            if opts.get("output_combined_target") and target_refs:
+                combined_files, df_csum_mode, df_chits, df_csum_coord = self._generate_combined_target_outputs(
+                    base, ctx, ped_blocks, coords, atom_map, target_refs, opts
+                )
+                saved_files.extend(combined_files)
+                if df_csum_mode is not None and not df_csum_mode.empty:
+                    preview_summary_mode.append(df_csum_mode)
+                if df_chits is not None and not df_chits.empty:
+                    preview_hits.append(df_chits)
+                if df_csum_coord is not None and not df_csum_coord.empty:
+                    preview_summary_coord.append(df_csum_coord)
 
             lookup_path = self._output_path(base, "_coordinates_lookup.csv")
             export_internal_coordinate_lookup_csv(self.dd2_path, lookup_path, fmu_path=self.fmu_path, atom_map=atom_map)

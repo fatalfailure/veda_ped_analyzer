@@ -1,7 +1,7 @@
 # veda_ped_analyzer User Manual
 
 Repository: https://github.com/fatalfailure/veda_ped_analyzer
-Current version: **v1.1.1 - Target Coordinate Tracking UI refinements**
+Current version: **v1.1.9 - Coordinate Browser filter help**
 
 ## 1. Purpose
 
@@ -119,9 +119,9 @@ Main columns:
 |---|---|---|
 | Coordinate set | `s - standard` | Show only the standard internal-coordinate interpretation |
 | Group | `STRE - Stretching` | Show only stretching coordinates |
-| Contains atom index | `1` | Show coordinates containing a specific metal atom index |
+| Atom filter | `3`, `3,12`, `3-12` | Filter by atom index. `3,12` means atom 3 OR 12; `3-12` means both atoms 3 and 12. |
 | Contains element | `Co` | Show coordinates containing Co |
-| Label contains | `Co-N` | Search by text label |
+| Text filter | `C4-C11`, `CC`, `ZnO`, `str` | Search atom labels, VEDA labels, raw labels, and source lines. |
 
 
 #### Meaning of Coordinate set
@@ -137,11 +137,17 @@ The Coordinate set selector shows the VEDA/DD2 internal-coordinate interpretatio
 
 By default, the Coordinate Browser selects `s - standard` and `STRE - Stretching`.
 
+#### Atom filter and Text filter
+
+`Atom filter` accepts atom-index queries. `3` means coordinates containing atom 3; `3,12` means coordinates containing atom 3 OR atom 12; `3-12` means coordinates containing BOTH atoms 3 and 12. The dash forms `3–12` and `3－12` are also accepted.
+
+`Text filter` is a free-text search over the displayed atom label, VEDA label, raw label, and source line. It is useful for terms such as `C4-C11`, `CC`, `ZnO`, or `str`.
+
 For metal-ligand stretches, start with:
 
 ```text
 Group = STRE
-Contains atom index = metal atom index
+Atom filter = metal atom index
 ```
 
 Then select the desired rows and press `Add selected to target`.
@@ -431,7 +437,7 @@ Example: find Co-N stretching modes between 200 and 800 cm^-1.
 
 ```text
 Group = STRE
-Contains atom index = Co atom index
+Atom filter = Co atom index
 ```
 
 4. Select Co-N coordinates and press `Add selected to target`.
@@ -651,3 +657,44 @@ Include target modes below total threshold = ON
 5. Set frequency range in `Run Analysis`.
 6. Run analysis.
 7. Open `target_summary_by_mode` and inspect modes with large `total_target_PED`.
+
+---
+
+## 16. Target references in the `s:81`, `k:128`, `v:81` format
+
+Since v1.1.3, target coordinates are stored not only by numeric `coord_id`, but by a code-qualified `code:coord_id` reference.
+
+Examples:
+
+```text
+s:81   coord_id 81 in the standard coordinate set
+k:128  coord_id 128 in the alternative_k coordinate set
+v:81   coord_id 81 in the alternative_v coordinate set
+```
+
+This is important because the same numeric `coord_id` can refer to different internal coordinates in different coordinate sets. For example, `s:81` may represent C4-C5, while `v:81` may represent C4-C11. A numeric-only target such as `81` cannot distinguish these cases.
+
+When you use `Add selected to target` from the Coordinate Browser, the new code-qualified format is used automatically. Numeric-only target IDs are still accepted for backward compatibility, but explicit references such as `s:81`, `k:128`, and `v:81` are recommended for new analyses.
+
+When **Include alternative coordinate sets (k/v)** is enabled, standard, alternative_k, and alternative_v outputs are generated separately. This keeps the standard result while allowing the alternative coordinate sets to be inspected independently.
+
+The `v` coordinate set corresponds to `ALTERNATIVE2`. It should not automatically be interpreted as an extended version of `k`; it is safer to treat `k` and `v` as separate alternative coordinate interpretations supplied by VEDA/DD2.
+
+
+## Combined target outputs (v1.1.3)
+
+When chemically related internal coordinates are not available in the same VEDA coordinate set, you can place code-qualified target references such as `s:83` and `k:126` in the same target set. Enable **Combined target outputs (allow mixed s/k/v targets)** in the Run Analysis tab to create:
+
+- `_target_summary_by_mode_combined.csv`
+- `_target_hits_combined.csv`
+- `_target_summary_by_coord_combined.csv`
+- `_target_matrix_combined.csv`
+
+The combined outputs use the selected `target_ref` values literally when summing PED contributions. This keeps standard and alternative coordinates traceable even when they are intentionally mixed. Avoid adding multiple references for the same physical bond, such as both `k:126` and `v:76`, unless you intentionally want to inspect possible duplicate coordinate definitions.
+
+### Combined output matrix-source selection (v1.1.9)
+
+For a mixed target set, each requested target reference (`s:*`, `k:*`, or `v:*`) is evaluated with the corresponding DD2 coordinate-set interpretation. If the `.ved` file does not contain an explicit alternative PED block, the available PED matrix, usually the standard matrix, is reused as the numeric source and interpreted with the requested DD2 coordinate labels. The columns `requested_target_refs`, `found_target_refs`, and `missing_target_refs` indicate whether all mixed targets were included.
+
+If matrix-based matching still cannot find a requested target, the DD2-terms fallback may be used; such terms are marked with sources such as `dd2_terms_alternative_k`.
+
