@@ -1,6 +1,6 @@
 # veda_ped_analyzer
 
-**現在のバージョン:** v1.1.9  
+**現在のバージョン:** v1.1.10  
 **リポジトリ:** https://github.com/fatalfailure/veda_ped_analyzer
 
 `veda_ped_analyzer` は、**VEDA** の出力ファイル（`.ved`, `.dd2`）から **PED（Potential Energy Distribution）** を解析し、CSV 形式で整理する Python GUI ツールです。必要に応じて **ORCA** または **Gaussian** の振動解析 output を読み取り、VEDA mode と QC output 側 mode を対応付けます。
@@ -19,7 +19,8 @@
 - rank 7 以下も検索できる long-format PED table 出力
 - target hits、target summary by mode、target summary by coordinate、target matrix 出力
 - `alternative_k` / `alternative_v` 座標解釈の任意出力。デフォルトでは OFF
-- `s` / `k` / `v` の target reference を安全に混在させて集計する combined target 出力
+- 行固有の `coordinate_uid` による target 識別と、組合せ座標の安全な処理
+- `s` / `k` / `v` の target を安全に混在させて集計する combined target 出力
 
 ## 必要環境
 
@@ -90,11 +91,19 @@ target_coordinates
 たとえば、`ring_CC_stretches`, `carbonyl_modes`, `Co_N_stretches` など、解析対象に合わせて自由に変更できます。金属–配位子伸縮の自動検出ボタンを使った場合は、その target set を表すラベルとして `metal_ligand_stretch` が使われることがあります。
 
 
-### coordinate-set 付き target 指定
+### target の識別方法
 
-target は `s:81`, `k:128`, `v:81` のように、coordinate set と coord_id を組み合わせて管理します。これにより、standard (`s`) の `81` と alternative_v (`v`) の `81` が別の内部座標を表す場合でも、安全に区別できます。従来互換のため、数値だけの指定も読み込めますが、Coordinate Browser から新しく追加した target は `code:coord_id` 形式で保存されます。
+v1.1.10 では、target を `coord_id` や `code:coord_id` だけでは識別しません。Coordinate Browser で選択した DD2 行には、次の情報を含む行固有の `coordinate_uid` が付与されます。
 
-**Include alternative coordinate sets (k/v)** を ON にすると、standard、alternative_k、alternative_v の出力が別々に生成されます。したがって、standard の結果を残したまま alternative 座標の結果を確認できます。
+```text
+code + coord_id + group + atoms + 入力行識別情報
+```
+
+選択行の `atoms`, `atom_label`, `label`, `raw_label` は target record に保持され、設定 JSON、解析、再読込、CSV 出力で同じ UID が使われます。旧版の `s:81`, `k:STRE:128` などは移行用に読み込めますが、新しい解析では Coordinate Browser から行を選択してください。
+
+同じ `code + coord_id` に複数の DD2 行がある場合は、一方を上書きせず、全行を一つの組合せ座標として保持します。その PED 値は選択した一成分だけの値とは表示されず、`combined:k:126` のような UID と全構成成分が出力されます。
+
+**Include alternative coordinate sets (k/v)** を ON にすると、standard、alternative_k、alternative_v の出力が別々に生成されます。異なる座標セットの target を同一 target set として集計する場合は、**Combined target outputs (allow mixed s/k/v targets)** も ON にします。
 
 ## 出力ファイル
 
@@ -111,7 +120,7 @@ target は `s:81`, `k:128`, `v:81` のように、coordinate set と coord_id �
 - `sample_target_summary_by_coord_standard.csv`  
   内部座標ごとに、どの mode に強く現れるかをまとめた表。
 - `sample_target_matrix_standard.csv`  
-  行が mode、列が target coord_id の行列形式。
+  行が mode、PED 列名が `PED::<coordinate_uid>` となる行列形式。
 - `sample_coordinates_lookup.csv`  
   DD2 内部座標の lookup table。
 
@@ -137,13 +146,10 @@ CSV 保存時に `[Errno 13] Permission denied` が出る場合、主な原因�
 Excel を閉じ、Desktop や Documents など書き込み可能な場所を出力先に指定してください。
 
 
-### combined 出力の matrix-source 選択（v1.1.9）
+### combined 出力の matrix-source 選択
 
-mixed target set では、指定された target reference（`s:*`, `k:*`, `v:*`）ごとに、対応する DD2 座標セット解釈を使って PED 寄与を評価します。`.ved` ファイルに明示的な alternative PED block がない場合は、利用可能な PED matrix、通常は standard matrix、を数値ソースとして再利用し、指定された DD2 座標ラベルで解釈します。`requested_target_refs`, `found_target_refs`, `missing_target_refs` 列により、指定した mixed target がすべて含まれたかを確認できます。
-
-matrix ベースの照合で target が見つからない場合は、DD2 terms fallback が使われることがあります。その場合、`dd2_terms_alternative_k` のような由来が表示されます。
+各 target UID について、対応する DD2 座標セット解釈を使用します。明示的な alternative PED matrix が存在しない場合は、利用可能な matrix を指定された DD2 座標セットで再解釈します。matrix で照合できない場合のみ DD2 terms fallback を使用します。組合せ座標については、構成成分の値を mode ごとに重複除去し、独立した PED として加算しません。
 
 ## ライセンス
 
 MIT License（`LICENSE` 参照）
-

@@ -1,7 +1,7 @@
 # veda_ped_analyzer 使い方マニュアル
 
 Repository: https://github.com/fatalfailure/veda_ped_analyzer
-現在のバージョン: **v1.1.9 - Coordinate Browser filter help**
+現在のバージョン: **v1.1.10 - Stable Coordinate UID and Combined-Coordinate Handling**
 ## 1. このプログラムの目的
 
 `veda_ped_analyzer.py` は、VEDA の PED（Potential Energy Distribution）解析結果を使って、**任意に選択した内部座標がどの振動モードに含まれているか**を追跡するための汎用 GUI ツールです。
@@ -234,7 +234,7 @@ coord_group が STRE
 | Target hits | ON | target 座標が含まれる mode を一覧出力 |
 | Target summary by mode | ON | mode ごとに target PED 合計を出力 |
 | Target summary by coordinate | ON | 内部座標ごとに出現 mode を集計 |
-| Target matrix | ON | mode × target coord_id の行列を出力 |
+| Target matrix | ON | mode × target coordinate_uid の行列を出力（PED 列名は `PED::<coordinate_uid>`） |
 | Include target modes below total threshold | 必要に応じて | target 合計 PED がしきい値未満の mode も残す |
 
 通常はすべて ON で問題ありません。
@@ -430,7 +430,7 @@ target 内部座標ごとに、どの mode に強く現れるかを集計しま�
 sample_target_matrix_standard.csv
 ```
 
-行が mode、列が target coord_id の行列形式です。
+行が mode、PED 列名が `PED::<coordinate_uid>` となる行列形式です。
 
 Excel や pandas でヒートマップを作る場合に便利です。
 
@@ -868,9 +868,9 @@ PED 重み付き平均周波数はどこか
 
 ---
 
-## 16. `s:81`, `k:128`, `v:81` 形式の target 指定
+## 16. 旧版の `s:81`, `k:128`, `v:81` 形式（互換入力）
 
-v1.1.3 以降、target 座標は `coord_id` だけではなく、coordinate set と coord_id を組み合わせた `code:coord_id` 形式で管理します。
+v1.1.3–v1.1.9 では、target 座標を coordinate set と coord_id を組み合わせた `code:coord_id` 形式で管理していました。v1.1.10 ではこの形式は互換入力であり、新規選択と集計は `coordinate_uid` を使用します。
 
 例:
 
@@ -882,7 +882,7 @@ v:81   alternative_v 座標セットの coord_id 81
 
 これは、同じ numeric `coord_id` が coordinate set によって異なる内部座標を表す場合があるためです。たとえば `s:81` が C4-C5 を表し、`v:81` が C4-C11 を表す場合、従来の `81` だけの指定では両者を区別できません。
 
-Coordinate Browser から `Add selected to target` を押した場合、新しい形式で自動的に target に追加されます。従来互換のため `81` のような数値だけの指定も読み込めますが、新しい解析では `s:81`, `k:128`, `v:81` のように明示することを推奨します。
+旧設定の `81`, `s:81`, `k:STRE:128` などは再読込時に解決できます。新しい解析では Coordinate Browser で正確な行を選択し、生成された `coordinate_uid` を使用してください。
 
 `Include alternative coordinate sets (k/v)` を ON にした場合、standard、alternative_k、alternative_v の出力が別々に生成されます。standard の結果を残したまま alternative 座標の結果を確認できます。
 
@@ -898,11 +898,26 @@ Coordinate Browser から `Add selected to target` を押した場合、新し�
 - `_target_summary_by_coord_combined.csv`
 - `_target_matrix_combined.csv`
 
-combined 出力では、選択した `target_ref` をそのまま用いて合計 PED を計算します。したがって、standard と alternative の座標を混在させても、どの座標由来の寄与かを追跡できます。同じ物理的結合を `k:126` と `v:76` のように重複登録すると二重計上になり得るため、通常は一つだけ選択してください。
+combined 出力では、選択した `coordinate_uid` を集計キーとして合計 PED を計算します。したがって、standard と alternative の座標を混在させても、どの座標由来の寄与かを追跡できます。同じ物理的結合を `k:126` と `v:76` のように重複登録すると二重計上になり得るため、通常は一つだけ選択してください。
 
 ### combined 出力の matrix-source 選択（v1.1.9）
 
-mixed target set では、指定された target reference（`s:*`, `k:*`, `v:*`）ごとに、対応する DD2 座標セット解釈を使って PED 寄与を評価します。`.ved` ファイルに明示的な alternative PED block がない場合は、利用可能な PED matrix、通常は standard matrix、を数値ソースとして再利用し、指定された DD2 座標ラベルで解釈します。`requested_target_refs`, `found_target_refs`, `missing_target_refs` 列により、指定した mixed target がすべて含まれたかを確認できます。
+mixed target set では、指定された target reference（`s:*`, `k:*`, `v:*`）ごとに、対応する DD2 座標セット解釈を使って PED 寄与を評価します。`.ved` ファイルに明示的な alternative PED block がない場合は、利用可能な PED matrix、通常は standard matrix、を数値ソースとして再利用し、指定された DD2 座標ラベルで解釈します。`requested_coordinate_uids`, `found_coordinate_uids`, `missing_coordinate_uids` 列により、指定した mixed target がすべて含まれたかを確認できます。
 
 matrix ベースの照合で target が見つからない場合は、DD2 terms fallback が使われることがあります。その場合、`dd2_terms_alternative_k` のような由来が表示されます。
 
+
+
+## v1.1.10：内部座標の一意識別と組合せ座標
+
+### coordinate_uid
+
+DD2 の各内部座標行には `coordinate_uid` が付与されます。この UID は `code`, `coord_id`, `group`, `atoms` と入力行識別情報から作られます。GUI で選択した行の `atoms`, `atom_label`, `label`, `raw_label` は target record に保存され、設定 JSON、解析、再読込、CSV 出力で同じ識別情報が使われます。
+
+### 同じ code + coord_id を持つ複数行
+
+同じ `code + coord_id` に複数の原子組が存在する場合、これらをリストとして保持します。VEDA の PED matrix にその座標番号の値が一つしかない場合、その値は個々の行ではなく座標全体の値です。アプリは `combined:<code>:<coord_id>` を effective `coordinate_uid` とし、全構成成分を `component_*` 列に併記します。選択した一成分だけの PED としては表示しません。
+
+### CSV の確認列
+
+`target_hits_combined.csv` と各 summary ファイルでは、少なくとも `coordinate_uid` と `atoms` を確認してください。組合せ座標では、さらに `is_combined_coordinate`, `component_count`, `component_uids`, `component_atoms`, `component_labels` を確認します。combined summary の診断列は `requested_coordinate_uids`, `found_coordinate_uids`, `missing_coordinate_uids` です。

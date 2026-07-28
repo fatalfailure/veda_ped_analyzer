@@ -1,7 +1,7 @@
 # veda_ped_analyzer User Manual
 
 Repository: https://github.com/fatalfailure/veda_ped_analyzer
-Current version: **v1.1.9 - Coordinate Browser filter help**
+Current version: **v1.1.10 - Stable Coordinate UID and Combined-Coordinate Handling**
 
 ## 1. Purpose
 
@@ -660,9 +660,9 @@ Include target modes below total threshold = ON
 
 ---
 
-## 16. Target references in the `s:81`, `k:128`, `v:81` format
+## 16. Legacy `s:81`, `k:128`, `v:81` references (compatibility input)
 
-Since v1.1.3, target coordinates are stored not only by numeric `coord_id`, but by a code-qualified `code:coord_id` reference.
+Versions 1.1.3–1.1.9 used code-qualified `code:coord_id` target references. In v1.1.10 these forms are compatibility input; new GUI selections and aggregation use `coordinate_uid`.
 
 Examples:
 
@@ -674,7 +674,7 @@ v:81   coord_id 81 in the alternative_v coordinate set
 
 This is important because the same numeric `coord_id` can refer to different internal coordinates in different coordinate sets. For example, `s:81` may represent C4-C5, while `v:81` may represent C4-C11. A numeric-only target such as `81` cannot distinguish these cases.
 
-When you use `Add selected to target` from the Coordinate Browser, the new code-qualified format is used automatically. Numeric-only target IDs are still accepted for backward compatibility, but explicit references such as `s:81`, `k:128`, and `v:81` are recommended for new analyses.
+Legacy numeric and code-qualified references can still be resolved when loading old settings. For new analyses, select the exact DD2 row in Coordinate Browser and use the generated `coordinate_uid`.
 
 When **Include alternative coordinate sets (k/v)** is enabled, standard, alternative_k, and alternative_v outputs are generated separately. This keeps the standard result while allowing the alternative coordinate sets to be inspected independently.
 
@@ -690,11 +690,26 @@ When chemically related internal coordinates are not available in the same VEDA 
 - `_target_summary_by_coord_combined.csv`
 - `_target_matrix_combined.csv`
 
-The combined outputs use the selected `target_ref` values literally when summing PED contributions. This keeps standard and alternative coordinates traceable even when they are intentionally mixed. Avoid adding multiple references for the same physical bond, such as both `k:126` and `v:76`, unless you intentionally want to inspect possible duplicate coordinate definitions.
+The combined outputs use the selected `coordinate_uid` values as aggregation keys when summing PED contributions. This keeps standard and alternative coordinates traceable even when they are intentionally mixed. Avoid adding multiple references for the same physical bond, such as both `k:126` and `v:76`, unless you intentionally want to inspect possible duplicate coordinate definitions.
 
 ### Combined output matrix-source selection (v1.1.9)
 
-For a mixed target set, each requested target reference (`s:*`, `k:*`, or `v:*`) is evaluated with the corresponding DD2 coordinate-set interpretation. If the `.ved` file does not contain an explicit alternative PED block, the available PED matrix, usually the standard matrix, is reused as the numeric source and interpreted with the requested DD2 coordinate labels. The columns `requested_target_refs`, `found_target_refs`, and `missing_target_refs` indicate whether all mixed targets were included.
+For a mixed target set, each requested target reference (`s:*`, `k:*`, or `v:*`) is evaluated with the corresponding DD2 coordinate-set interpretation. If the `.ved` file does not contain an explicit alternative PED block, the available PED matrix, usually the standard matrix, is reused as the numeric source and interpreted with the requested DD2 coordinate labels. The columns `requested_coordinate_uids`, `found_coordinate_uids`, and `missing_coordinate_uids` indicate whether all mixed targets were included.
 
 If matrix-based matching still cannot find a requested target, the DD2-terms fallback may be used; such terms are marked with sources such as `dd2_terms_alternative_k`.
 
+
+
+## v1.1.10: Unique coordinate identity and combination coordinates
+
+### coordinate_uid
+
+Each DD2 internal-coordinate row receives a `coordinate_uid` built from `code`, `coord_id`, `group`, `atoms`, and input-row identity. The selected row's `atoms`, `atom_label`, `label`, and `raw_label` are retained in the target record and reused in configuration, analysis, reload, and CSV export.
+
+### Multiple rows with the same code + coord_id
+
+Rows sharing one `code + coord_id` are retained as a list. If VEDA defines one PED value for that coordinate number, the value belongs to the entire combination coordinate. The application uses `combined:<code>:<coord_id>` as the effective `coordinate_uid`, lists every component in the `component_*` columns, and does not present the value as the PED of only the selected component.
+
+### CSV checks
+
+Inspect `coordinate_uid` and `atoms` in `target_hits_combined.csv` and all summary files. For a combination coordinate, also inspect `is_combined_coordinate`, `component_count`, `component_uids`, `component_atoms`, and `component_labels`. Combined-summary diagnostics use `requested_coordinate_uids`, `found_coordinate_uids`, and `missing_coordinate_uids`.

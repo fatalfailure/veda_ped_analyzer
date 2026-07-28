@@ -1,0 +1,1149 @@
+{
+  "ved_path": "C:/Users/Kaoru/マイドライブ（wasurembo@gmail.com）/tmp/cozn/freq/svp_freq/co3_bq2_zn2_m1_opt_svp.ved",
+  "dd2_path": "C:\\Users\\Kaoru\\マイドライブ（wasurembo@gmail.com）\\tmp\\cozn\\freq\\svp_freq\\co3_bq2_zn2_m1_opt_svp.dd2",
+  "fmu_path": "C:\\Users\\Kaoru\\マイドライブ（wasurembo@gmail.com）\\tmp\\cozn\\freq\\svp_freq\\co3_bq2_zn2_m1_opt_svp.fmu",
+  "out_path": "C:\\Users\\Kaoru\\マイドライブ（wasurembo@gmail.com）\\tmp\\cozn\\freq\\svp_freq\\co3_bq2_zn2_m1_opt_svp.out",
+  "last_dir": "C:\\Users\\Kaoru\\マイドライブ（wasurembo@gmail.com）\\tmp\\cozn\\freq\\svp_freq",
+  "output_dir_path": "",
+  "target_name": "metal_o",
+  "metal_atoms": "",
+  "ligand_atoms": "",
+  "ligand_elements": "N O S P Cl Br I",
+  "use_rule_if_empty": true,
+  "target_coord_ids": "combined:k:126\ncombined:k:127\ncombined:v:134\ncoord:k:128:STRE:9-6:L419:af76c01609\ncoord:s:122:STRE:1-3:L125:40796b76c3\ncoord:s:125:STRE:2-7:L128:026bdc7b70\ncoord:s:75:STRE:7-6:L78:4f44d83445\ncoord:s:76:STRE:8-9:L79:95083e3dae\ncoord:s:77:STRE:3-4:L80:f5a8cd6904\ncoord:s:78:STRE:5-4:L81:0c90a062ec\ncoord:s:79:STRE:10-11:L82:818d340f1a\ncoord:s:80:STRE:12-11:L83:e9f0371dba\ncoord:s:81:STRE:6-5:L84:a179fd8ec9\ncoord:s:82:STRE:9-10:L85:715b91916c\ncoord:s:83:STRE:11-4:L86:084bf16aa0",
+  "top_n": "6",
+  "standard_min_ped": "0.1",
+  "long_min_ped": "0.1",
+  "target_min_ped": "0.1",
+  "target_total_min_ped": "1.0",
+  "freq_min": "",
+  "freq_max": "",
+  "output_standard": true,
+  "output_long": true,
+  "output_target_hits": true,
+  "output_summary_mode": true,
+  "output_summary_coord": true,
+  "output_target_matrix": true,
+  "include_alternative": true,
+  "include_all_target_modes": true,
+  "output_combined_target": true,
+  "target_coordinates": [
+    {
+      "coordinate_uid": "combined:v:134",
+      "combined_coordinate_uid": "combined:v:134",
+      "is_combined_coordinate": true,
+      "component_count": 4,
+      "component_uids": "coord:v:134:BEND:8-2-7:L885:1cabb35ce3 | coord:v:134:BEND:22-2-7:L886:604fa2c755 | coord:v:134:BEND:18-2-7:L887:4c62726872 | coord:v:134:BEND:25-2-7:L888:d933a46007",
+      "component_groups": "BEND | BEND | BEND | BEND",
+      "component_atoms": "8 2 7 | 22 2 7 | 18 2 7 | 25 2 7",
+      "component_atom_labels": "O8-Zn2-O7 | N22-Zn2-O7 | N18-Zn2-O7 | N25-Zn2-O7",
+      "component_labels": "bend(O8-Zn2-O7)[OZnO] | bend(N22-Zn2-O7)[NZnO] | bend(N18-Zn2-O7)[NZnO] | bend(N25-Zn2-O7)[NZnO]",
+      "component_raw_labels": "OZnO | NZnO | NZnO | NZnO",
+      "coord_id": 134,
+      "coord_code": "v",
+      "coord_group": "BEND",
+      "atoms": "8 2 7 | 22 2 7 | 18 2 7 | 25 2 7",
+      "atom_label": "O8-Zn2-O7 | N22-Zn2-O7 | N18-Zn2-O7 | N25-Zn2-O7",
+      "label": "combined coordinate [bend(O8-Zn2-O7)[OZnO]; bend(N22-Zn2-O7)[NZnO]; bend(N18-Zn2-O7)[NZnO]; bend(N25-Zn2-O7)[NZnO]]",
+      "raw_label": "OZnO | NZnO | NZnO | NZnO",
+      "selected_component_uid": "coord:v:134:BEND:8-2-7:L885:1cabb35ce3",
+      "selected_component_uids": [
+        "coord:v:134:BEND:8-2-7:L885:1cabb35ce3"
+      ],
+      "selected_component_group": "BEND",
+      "selected_component_atoms": "8 2 7",
+      "selected_component_atom_label": "O8-Zn2-O7",
+      "selected_component_label": "bend(O8-Zn2-O7)[OZnO]",
+      "selected_component_raw_label": "OZnO",
+      "selected_component_uids_text": "coord:v:134:BEND:8-2-7:L885:1cabb35ce3",
+      "selected_component_atoms_all": "8 2 7",
+      "selected_component_atom_labels_all": "O8-Zn2-O7",
+      "selected_component_labels_all": "bend(O8-Zn2-O7)[OZnO]",
+      "selected_component_raw_labels_all": "OZnO",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:v:134:BEND:8-2-7:L885:1cabb35ce3",
+          "coord_code": "v",
+          "coord_id": 134,
+          "coord_group": "BEND",
+          "atoms": [
+            8,
+            2,
+            7
+          ],
+          "atom_label": "O8-Zn2-O7",
+          "label": "bend(O8-Zn2-O7)[OZnO]",
+          "raw_label": "OZnO",
+          "source_line_number": 885,
+          "source_line": "v 134   1.00   BEND    8    2    7   OZnO    73.24"
+        }
+      ],
+      "source_line_number": 885,
+      "source_line": "v 134   1.00   BEND    8    2    7   OZnO    73.24",
+      "components": [
+        {
+          "coordinate_uid": "coord:v:134:BEND:8-2-7:L885:1cabb35ce3",
+          "coord_code": "v",
+          "coord_id": 134,
+          "coord_group": "BEND",
+          "atoms": [
+            8,
+            2,
+            7
+          ],
+          "atom_label": "O8-Zn2-O7",
+          "label": "bend(O8-Zn2-O7)[OZnO]",
+          "raw_label": "OZnO",
+          "source_line_number": 885,
+          "source_line": "v 134   1.00   BEND    8    2    7   OZnO    73.24"
+        },
+        {
+          "coordinate_uid": "coord:v:134:BEND:22-2-7:L886:604fa2c755",
+          "coord_code": "v",
+          "coord_id": 134,
+          "coord_group": "BEND",
+          "atoms": [
+            22,
+            2,
+            7
+          ],
+          "atom_label": "N22-Zn2-O7",
+          "label": "bend(N22-Zn2-O7)[NZnO]",
+          "raw_label": "NZnO",
+          "source_line_number": 886,
+          "source_line": "v 134   1.00   BEND   22    2    7   NZnO    92.11"
+        },
+        {
+          "coordinate_uid": "coord:v:134:BEND:18-2-7:L887:4c62726872",
+          "coord_code": "v",
+          "coord_id": 134,
+          "coord_group": "BEND",
+          "atoms": [
+            18,
+            2,
+            7
+          ],
+          "atom_label": "N18-Zn2-O7",
+          "label": "bend(N18-Zn2-O7)[NZnO]",
+          "raw_label": "NZnO",
+          "source_line_number": 887,
+          "source_line": "v 134   1.00   BEND   18    2    7   NZnO   105.79"
+        },
+        {
+          "coordinate_uid": "coord:v:134:BEND:25-2-7:L888:d933a46007",
+          "coord_code": "v",
+          "coord_id": 134,
+          "coord_group": "BEND",
+          "atoms": [
+            25,
+            2,
+            7
+          ],
+          "atom_label": "N25-Zn2-O7",
+          "label": "bend(N25-Zn2-O7)[NZnO]",
+          "raw_label": "NZnO",
+          "source_line_number": 888,
+          "source_line": "v 134   1.00   BEND   25    2    7   NZnO    82.17"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:75:STRE:7-6:L78:4f44d83445",
+      "combined_coordinate_uid": "combined:s:75",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:75:STRE:7-6:L78:4f44d83445",
+      "component_groups": "STRE",
+      "component_atoms": "7 6",
+      "component_atom_labels": "O7-C6",
+      "component_labels": "str(O7-C6)[OC]",
+      "component_raw_labels": "OC",
+      "coord_id": 75,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "7 6",
+      "atom_label": "O7-C6",
+      "label": "str(O7-C6)[OC]",
+      "raw_label": "OC",
+      "selected_component_uid": "coord:s:75:STRE:7-6:L78:4f44d83445",
+      "selected_component_uids": [
+        "coord:s:75:STRE:7-6:L78:4f44d83445"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "7 6",
+      "selected_component_atom_label": "O7-C6",
+      "selected_component_label": "str(O7-C6)[OC]",
+      "selected_component_raw_label": "OC",
+      "selected_component_uids_text": "coord:s:75:STRE:7-6:L78:4f44d83445",
+      "selected_component_atoms_all": "7 6",
+      "selected_component_atom_labels_all": "O7-C6",
+      "selected_component_labels_all": "str(O7-C6)[OC]",
+      "selected_component_raw_labels_all": "OC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:75:STRE:7-6:L78:4f44d83445",
+          "coord_code": "s",
+          "coord_id": 75,
+          "coord_group": "STRE",
+          "atoms": [
+            7,
+            6
+          ],
+          "atom_label": "O7-C6",
+          "label": "str(O7-C6)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 78,
+          "source_line": "s 75    1.00   STRE    7    6   OC    0.661166  f1673 31  f1654 41"
+        }
+      ],
+      "source_line_number": 78,
+      "source_line": "s 75    1.00   STRE    7    6   OC    0.661166  f1673 31  f1654 41",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:75:STRE:7-6:L78:4f44d83445",
+          "coord_code": "s",
+          "coord_id": 75,
+          "coord_group": "STRE",
+          "atoms": [
+            7,
+            6
+          ],
+          "atom_label": "O7-C6",
+          "label": "str(O7-C6)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 78,
+          "source_line": "s 75    1.00   STRE    7    6   OC    0.661166  f1673 31  f1654 41"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:76:STRE:8-9:L79:95083e3dae",
+      "combined_coordinate_uid": "combined:s:76",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:76:STRE:8-9:L79:95083e3dae",
+      "component_groups": "STRE",
+      "component_atoms": "8 9",
+      "component_atom_labels": "O8-C9",
+      "component_labels": "str(O8-C9)[OC]",
+      "component_raw_labels": "OC",
+      "coord_id": 76,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "8 9",
+      "atom_label": "O8-C9",
+      "label": "str(O8-C9)[OC]",
+      "raw_label": "OC",
+      "selected_component_uid": "coord:s:76:STRE:8-9:L79:95083e3dae",
+      "selected_component_uids": [
+        "coord:s:76:STRE:8-9:L79:95083e3dae"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "8 9",
+      "selected_component_atom_label": "O8-C9",
+      "selected_component_label": "str(O8-C9)[OC]",
+      "selected_component_raw_label": "OC",
+      "selected_component_uids_text": "coord:s:76:STRE:8-9:L79:95083e3dae",
+      "selected_component_atoms_all": "8 9",
+      "selected_component_atom_labels_all": "O8-C9",
+      "selected_component_labels_all": "str(O8-C9)[OC]",
+      "selected_component_raw_labels_all": "OC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:76:STRE:8-9:L79:95083e3dae",
+          "coord_code": "s",
+          "coord_id": 76,
+          "coord_group": "STRE",
+          "atoms": [
+            8,
+            9
+          ],
+          "atom_label": "O8-C9",
+          "label": "str(O8-C9)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 79,
+          "source_line": "s 76    1.00   STRE    8    9   OC    0.661124  f1673 33  f1654 40"
+        }
+      ],
+      "source_line_number": 79,
+      "source_line": "s 76    1.00   STRE    8    9   OC    0.661124  f1673 33  f1654 40",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:76:STRE:8-9:L79:95083e3dae",
+          "coord_code": "s",
+          "coord_id": 76,
+          "coord_group": "STRE",
+          "atoms": [
+            8,
+            9
+          ],
+          "atom_label": "O8-C9",
+          "label": "str(O8-C9)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 79,
+          "source_line": "s 76    1.00   STRE    8    9   OC    0.661124  f1673 33  f1654 40"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:77:STRE:3-4:L80:f5a8cd6904",
+      "combined_coordinate_uid": "combined:s:77",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:77:STRE:3-4:L80:f5a8cd6904",
+      "component_groups": "STRE",
+      "component_atoms": "3 4",
+      "component_atom_labels": "O3-C4",
+      "component_labels": "str(O3-C4)[OC]",
+      "component_raw_labels": "OC",
+      "coord_id": 77,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "3 4",
+      "atom_label": "O3-C4",
+      "label": "str(O3-C4)[OC]",
+      "raw_label": "OC",
+      "selected_component_uid": "coord:s:77:STRE:3-4:L80:f5a8cd6904",
+      "selected_component_uids": [
+        "coord:s:77:STRE:3-4:L80:f5a8cd6904"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "3 4",
+      "selected_component_atom_label": "O3-C4",
+      "selected_component_label": "str(O3-C4)[OC]",
+      "selected_component_raw_label": "OC",
+      "selected_component_uids_text": "coord:s:77:STRE:3-4:L80:f5a8cd6904",
+      "selected_component_atoms_all": "3 4",
+      "selected_component_atom_labels_all": "O3-C4",
+      "selected_component_labels_all": "str(O3-C4)[OC]",
+      "selected_component_raw_labels_all": "OC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:77:STRE:3-4:L80:f5a8cd6904",
+          "coord_code": "s",
+          "coord_id": 77,
+          "coord_group": "STRE",
+          "atoms": [
+            3,
+            4
+          ],
+          "atom_label": "O3-C4",
+          "label": "str(O3-C4)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 80,
+          "source_line": "s 77    1.00   STRE    3    4   OC    0.687782  f1609 12  f1439 11  f1358 17"
+        }
+      ],
+      "source_line_number": 80,
+      "source_line": "s 77    1.00   STRE    3    4   OC    0.687782  f1609 12  f1439 11  f1358 17",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:77:STRE:3-4:L80:f5a8cd6904",
+          "coord_code": "s",
+          "coord_id": 77,
+          "coord_group": "STRE",
+          "atoms": [
+            3,
+            4
+          ],
+          "atom_label": "O3-C4",
+          "label": "str(O3-C4)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 80,
+          "source_line": "s 77    1.00   STRE    3    4   OC    0.687782  f1609 12  f1439 11  f1358 17"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:78:STRE:5-4:L81:0c90a062ec",
+      "combined_coordinate_uid": "combined:s:78",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:78:STRE:5-4:L81:0c90a062ec",
+      "component_groups": "STRE",
+      "component_atoms": "5 4",
+      "component_atom_labels": "C5-C4",
+      "component_labels": "str(C5-C4)[CC]",
+      "component_raw_labels": "CC",
+      "coord_id": 78,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "5 4",
+      "atom_label": "C5-C4",
+      "label": "str(C5-C4)[CC]",
+      "raw_label": "CC",
+      "selected_component_uid": "coord:s:78:STRE:5-4:L81:0c90a062ec",
+      "selected_component_uids": [
+        "coord:s:78:STRE:5-4:L81:0c90a062ec"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "5 4",
+      "selected_component_atom_label": "C5-C4",
+      "selected_component_label": "str(C5-C4)[CC]",
+      "selected_component_raw_label": "CC",
+      "selected_component_uids_text": "coord:s:78:STRE:5-4:L81:0c90a062ec",
+      "selected_component_atoms_all": "5 4",
+      "selected_component_atom_labels_all": "C5-C4",
+      "selected_component_labels_all": "str(C5-C4)[CC]",
+      "selected_component_raw_labels_all": "CC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:78:STRE:5-4:L81:0c90a062ec",
+          "coord_code": "s",
+          "coord_id": 78,
+          "coord_group": "STRE",
+          "atoms": [
+            5,
+            4
+          ],
+          "atom_label": "C5-C4",
+          "label": "str(C5-C4)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 81,
+          "source_line": "s 78    1.00   STRE    5    4   CC    0.731730  f1620 22  f1609 31"
+        }
+      ],
+      "source_line_number": 81,
+      "source_line": "s 78    1.00   STRE    5    4   CC    0.731730  f1620 22  f1609 31",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:78:STRE:5-4:L81:0c90a062ec",
+          "coord_code": "s",
+          "coord_id": 78,
+          "coord_group": "STRE",
+          "atoms": [
+            5,
+            4
+          ],
+          "atom_label": "C5-C4",
+          "label": "str(C5-C4)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 81,
+          "source_line": "s 78    1.00   STRE    5    4   CC    0.731730  f1620 22  f1609 31"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:79:STRE:10-11:L82:818d340f1a",
+      "combined_coordinate_uid": "combined:s:79",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:79:STRE:10-11:L82:818d340f1a",
+      "component_groups": "STRE",
+      "component_atoms": "10 11",
+      "component_atom_labels": "C10-C11",
+      "component_labels": "str(C10-C11)[CC]",
+      "component_raw_labels": "CC",
+      "coord_id": 79,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "10 11",
+      "atom_label": "C10-C11",
+      "label": "str(C10-C11)[CC]",
+      "raw_label": "CC",
+      "selected_component_uid": "coord:s:79:STRE:10-11:L82:818d340f1a",
+      "selected_component_uids": [
+        "coord:s:79:STRE:10-11:L82:818d340f1a"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "10 11",
+      "selected_component_atom_label": "C10-C11",
+      "selected_component_label": "str(C10-C11)[CC]",
+      "selected_component_raw_label": "CC",
+      "selected_component_uids_text": "coord:s:79:STRE:10-11:L82:818d340f1a",
+      "selected_component_atoms_all": "10 11",
+      "selected_component_atom_labels_all": "C10-C11",
+      "selected_component_labels_all": "str(C10-C11)[CC]",
+      "selected_component_raw_labels_all": "CC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:79:STRE:10-11:L82:818d340f1a",
+          "coord_code": "s",
+          "coord_id": 79,
+          "coord_group": "STRE",
+          "atoms": [
+            10,
+            11
+          ],
+          "atom_label": "C10-C11",
+          "label": "str(C10-C11)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 82,
+          "source_line": "s 79    1.00   STRE   10   11   CC    0.731713  f1620 23  f1609 30"
+        }
+      ],
+      "source_line_number": 82,
+      "source_line": "s 79    1.00   STRE   10   11   CC    0.731713  f1620 23  f1609 30",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:79:STRE:10-11:L82:818d340f1a",
+          "coord_code": "s",
+          "coord_id": 79,
+          "coord_group": "STRE",
+          "atoms": [
+            10,
+            11
+          ],
+          "atom_label": "C10-C11",
+          "label": "str(C10-C11)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 82,
+          "source_line": "s 79    1.00   STRE   10   11   CC    0.731713  f1620 23  f1609 30"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:80:STRE:12-11:L83:e9f0371dba",
+      "combined_coordinate_uid": "combined:s:80",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:80:STRE:12-11:L83:e9f0371dba",
+      "component_groups": "STRE",
+      "component_atoms": "12 11",
+      "component_atom_labels": "O12-C11",
+      "component_labels": "str(O12-C11)[OC]",
+      "component_raw_labels": "OC",
+      "coord_id": 80,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "12 11",
+      "atom_label": "O12-C11",
+      "label": "str(O12-C11)[OC]",
+      "raw_label": "OC",
+      "selected_component_uid": "coord:s:80:STRE:12-11:L83:e9f0371dba",
+      "selected_component_uids": [
+        "coord:s:80:STRE:12-11:L83:e9f0371dba"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "12 11",
+      "selected_component_atom_label": "O12-C11",
+      "selected_component_label": "str(O12-C11)[OC]",
+      "selected_component_raw_label": "OC",
+      "selected_component_uids_text": "coord:s:80:STRE:12-11:L83:e9f0371dba",
+      "selected_component_atoms_all": "12 11",
+      "selected_component_atom_labels_all": "O12-C11",
+      "selected_component_labels_all": "str(O12-C11)[OC]",
+      "selected_component_raw_labels_all": "OC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:80:STRE:12-11:L83:e9f0371dba",
+          "coord_code": "s",
+          "coord_id": 80,
+          "coord_group": "STRE",
+          "atoms": [
+            12,
+            11
+          ],
+          "atom_label": "O12-C11",
+          "label": "str(O12-C11)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 83,
+          "source_line": "s 80    1.00   STRE   12   11   OC    0.687825  f1609 11  f1439 12  f1358 18"
+        }
+      ],
+      "source_line_number": 83,
+      "source_line": "s 80    1.00   STRE   12   11   OC    0.687825  f1609 11  f1439 12  f1358 18",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:80:STRE:12-11:L83:e9f0371dba",
+          "coord_code": "s",
+          "coord_id": 80,
+          "coord_group": "STRE",
+          "atoms": [
+            12,
+            11
+          ],
+          "atom_label": "O12-C11",
+          "label": "str(O12-C11)[OC]",
+          "raw_label": "OC",
+          "source_line_number": 83,
+          "source_line": "s 80    1.00   STRE   12   11   OC    0.687825  f1609 11  f1439 12  f1358 18"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:81:STRE:6-5:L84:a179fd8ec9",
+      "combined_coordinate_uid": "combined:s:81",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:81:STRE:6-5:L84:a179fd8ec9",
+      "component_groups": "STRE",
+      "component_atoms": "6 5",
+      "component_atom_labels": "C6-C5",
+      "component_labels": "str(C6-C5)[CC]",
+      "component_raw_labels": "CC",
+      "coord_id": 81,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "6 5",
+      "atom_label": "C6-C5",
+      "label": "str(C6-C5)[CC]",
+      "raw_label": "CC",
+      "selected_component_uid": "coord:s:81:STRE:6-5:L84:a179fd8ec9",
+      "selected_component_uids": [
+        "coord:s:81:STRE:6-5:L84:a179fd8ec9"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "6 5",
+      "selected_component_atom_label": "C6-C5",
+      "selected_component_label": "str(C6-C5)[CC]",
+      "selected_component_raw_label": "CC",
+      "selected_component_uids_text": "coord:s:81:STRE:6-5:L84:a179fd8ec9",
+      "selected_component_atoms_all": "6 5",
+      "selected_component_atom_labels_all": "C6-C5",
+      "selected_component_labels_all": "str(C6-C5)[CC]",
+      "selected_component_raw_labels_all": "CC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:81:STRE:6-5:L84:a179fd8ec9",
+          "coord_code": "s",
+          "coord_id": 81,
+          "coord_group": "STRE",
+          "atoms": [
+            6,
+            5
+          ],
+          "atom_label": "C6-C5",
+          "label": "str(C6-C5)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 84,
+          "source_line": "s 81    1.00   STRE    6    5   CC    0.751146  f1392 14  f1358 16"
+        }
+      ],
+      "source_line_number": 84,
+      "source_line": "s 81    1.00   STRE    6    5   CC    0.751146  f1392 14  f1358 16",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:81:STRE:6-5:L84:a179fd8ec9",
+          "coord_code": "s",
+          "coord_id": 81,
+          "coord_group": "STRE",
+          "atoms": [
+            6,
+            5
+          ],
+          "atom_label": "C6-C5",
+          "label": "str(C6-C5)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 84,
+          "source_line": "s 81    1.00   STRE    6    5   CC    0.751146  f1392 14  f1358 16"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:82:STRE:9-10:L85:715b91916c",
+      "combined_coordinate_uid": "combined:s:82",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:82:STRE:9-10:L85:715b91916c",
+      "component_groups": "STRE",
+      "component_atoms": "9 10",
+      "component_atom_labels": "C9-C10",
+      "component_labels": "str(C9-C10)[CC]",
+      "component_raw_labels": "CC",
+      "coord_id": 82,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "9 10",
+      "atom_label": "C9-C10",
+      "label": "str(C9-C10)[CC]",
+      "raw_label": "CC",
+      "selected_component_uid": "coord:s:82:STRE:9-10:L85:715b91916c",
+      "selected_component_uids": [
+        "coord:s:82:STRE:9-10:L85:715b91916c"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "9 10",
+      "selected_component_atom_label": "C9-C10",
+      "selected_component_label": "str(C9-C10)[CC]",
+      "selected_component_raw_label": "CC",
+      "selected_component_uids_text": "coord:s:82:STRE:9-10:L85:715b91916c",
+      "selected_component_atoms_all": "9 10",
+      "selected_component_atom_labels_all": "C9-C10",
+      "selected_component_labels_all": "str(C9-C10)[CC]",
+      "selected_component_raw_labels_all": "CC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:82:STRE:9-10:L85:715b91916c",
+          "coord_code": "s",
+          "coord_id": 82,
+          "coord_group": "STRE",
+          "atoms": [
+            9,
+            10
+          ],
+          "atom_label": "C9-C10",
+          "label": "str(C9-C10)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 85,
+          "source_line": "s 82    1.00   STRE    9   10   CC    0.751216  f1392 14  f1358 16"
+        }
+      ],
+      "source_line_number": 85,
+      "source_line": "s 82    1.00   STRE    9   10   CC    0.751216  f1392 14  f1358 16",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:82:STRE:9-10:L85:715b91916c",
+          "coord_code": "s",
+          "coord_id": 82,
+          "coord_group": "STRE",
+          "atoms": [
+            9,
+            10
+          ],
+          "atom_label": "C9-C10",
+          "label": "str(C9-C10)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 85,
+          "source_line": "s 82    1.00   STRE    9   10   CC    0.751216  f1392 14  f1358 16"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:83:STRE:11-4:L86:084bf16aa0",
+      "combined_coordinate_uid": "combined:s:83",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:83:STRE:11-4:L86:084bf16aa0",
+      "component_groups": "STRE",
+      "component_atoms": "11 4",
+      "component_atom_labels": "C11-C4",
+      "component_labels": "str(C11-C4)[CC]",
+      "component_raw_labels": "CC",
+      "coord_id": 83,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "11 4",
+      "atom_label": "C11-C4",
+      "label": "str(C11-C4)[CC]",
+      "raw_label": "CC",
+      "selected_component_uid": "coord:s:83:STRE:11-4:L86:084bf16aa0",
+      "selected_component_uids": [
+        "coord:s:83:STRE:11-4:L86:084bf16aa0"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "11 4",
+      "selected_component_atom_label": "C11-C4",
+      "selected_component_label": "str(C11-C4)[CC]",
+      "selected_component_raw_label": "CC",
+      "selected_component_uids_text": "coord:s:83:STRE:11-4:L86:084bf16aa0",
+      "selected_component_atoms_all": "11 4",
+      "selected_component_atom_labels_all": "C11-C4",
+      "selected_component_labels_all": "str(C11-C4)[CC]",
+      "selected_component_raw_labels_all": "CC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:83:STRE:11-4:L86:084bf16aa0",
+          "coord_code": "s",
+          "coord_id": 83,
+          "coord_group": "STRE",
+          "atoms": [
+            11,
+            4
+          ],
+          "atom_label": "C11-C4",
+          "label": "str(C11-C4)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 86,
+          "source_line": "s 83    1.00   STRE   11    4   CC    0.793552  f1439 24  f700 30  f612 16"
+        }
+      ],
+      "source_line_number": 86,
+      "source_line": "s 83    1.00   STRE   11    4   CC    0.793552  f1439 24  f700 30  f612 16",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:83:STRE:11-4:L86:084bf16aa0",
+          "coord_code": "s",
+          "coord_id": 83,
+          "coord_group": "STRE",
+          "atoms": [
+            11,
+            4
+          ],
+          "atom_label": "C11-C4",
+          "label": "str(C11-C4)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 86,
+          "source_line": "s 83    1.00   STRE   11    4   CC    0.793552  f1439 24  f700 30  f612 16"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:122:STRE:1-3:L125:40796b76c3",
+      "combined_coordinate_uid": "combined:s:122",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:122:STRE:1-3:L125:40796b76c3",
+      "component_groups": "STRE",
+      "component_atoms": "1 3",
+      "component_atom_labels": "Co1-O3",
+      "component_labels": "str(Co1-O3)[CoO]",
+      "component_raw_labels": "CoO",
+      "coord_id": 122,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "1 3",
+      "atom_label": "Co1-O3",
+      "label": "str(Co1-O3)[CoO]",
+      "raw_label": "CoO",
+      "selected_component_uid": "coord:s:122:STRE:1-3:L125:40796b76c3",
+      "selected_component_uids": [
+        "coord:s:122:STRE:1-3:L125:40796b76c3"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "1 3",
+      "selected_component_atom_label": "Co1-O3",
+      "selected_component_label": "str(Co1-O3)[CoO]",
+      "selected_component_raw_label": "CoO",
+      "selected_component_uids_text": "coord:s:122:STRE:1-3:L125:40796b76c3",
+      "selected_component_atoms_all": "1 3",
+      "selected_component_atom_labels_all": "Co1-O3",
+      "selected_component_labels_all": "str(Co1-O3)[CoO]",
+      "selected_component_raw_labels_all": "CoO",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:122:STRE:1-3:L125:40796b76c3",
+          "coord_code": "s",
+          "coord_id": 122,
+          "coord_group": "STRE",
+          "atoms": [
+            1,
+            3
+          ],
+          "atom_label": "Co1-O3",
+          "label": "str(Co1-O3)[CoO]",
+          "raw_label": "CoO",
+          "source_line_number": 125,
+          "source_line": "s 122   1.00   STRE    1    3   CoO    1.005043  f612 15  f572 15"
+        }
+      ],
+      "source_line_number": 125,
+      "source_line": "s 122   1.00   STRE    1    3   CoO    1.005043  f612 15  f572 15",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:122:STRE:1-3:L125:40796b76c3",
+          "coord_code": "s",
+          "coord_id": 122,
+          "coord_group": "STRE",
+          "atoms": [
+            1,
+            3
+          ],
+          "atom_label": "Co1-O3",
+          "label": "str(Co1-O3)[CoO]",
+          "raw_label": "CoO",
+          "source_line_number": 125,
+          "source_line": "s 122   1.00   STRE    1    3   CoO    1.005043  f612 15  f572 15"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:s:125:STRE:2-7:L128:026bdc7b70",
+      "combined_coordinate_uid": "combined:s:125",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:s:125:STRE:2-7:L128:026bdc7b70",
+      "component_groups": "STRE",
+      "component_atoms": "2 7",
+      "component_atom_labels": "Zn2-O7",
+      "component_labels": "str(Zn2-O7)[ZnO]",
+      "component_raw_labels": "ZnO",
+      "coord_id": 125,
+      "coord_code": "s",
+      "coord_group": "STRE",
+      "atoms": "2 7",
+      "atom_label": "Zn2-O7",
+      "label": "str(Zn2-O7)[ZnO]",
+      "raw_label": "ZnO",
+      "selected_component_uid": "coord:s:125:STRE:2-7:L128:026bdc7b70",
+      "selected_component_uids": [
+        "coord:s:125:STRE:2-7:L128:026bdc7b70"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "2 7",
+      "selected_component_atom_label": "Zn2-O7",
+      "selected_component_label": "str(Zn2-O7)[ZnO]",
+      "selected_component_raw_label": "ZnO",
+      "selected_component_uids_text": "coord:s:125:STRE:2-7:L128:026bdc7b70",
+      "selected_component_atoms_all": "2 7",
+      "selected_component_atom_labels_all": "Zn2-O7",
+      "selected_component_labels_all": "str(Zn2-O7)[ZnO]",
+      "selected_component_raw_labels_all": "ZnO",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:s:125:STRE:2-7:L128:026bdc7b70",
+          "coord_code": "s",
+          "coord_id": 125,
+          "coord_group": "STRE",
+          "atoms": [
+            2,
+            7
+          ],
+          "atom_label": "Zn2-O7",
+          "label": "str(Zn2-O7)[ZnO]",
+          "raw_label": "ZnO",
+          "source_line_number": 128,
+          "source_line": "s 125   1.00   STRE    2    7   ZnO    1.163956"
+        }
+      ],
+      "source_line_number": 128,
+      "source_line": "s 125   1.00   STRE    2    7   ZnO    1.163956",
+      "components": [
+        {
+          "coordinate_uid": "coord:s:125:STRE:2-7:L128:026bdc7b70",
+          "coord_code": "s",
+          "coord_id": 125,
+          "coord_group": "STRE",
+          "atoms": [
+            2,
+            7
+          ],
+          "atom_label": "Zn2-O7",
+          "label": "str(Zn2-O7)[ZnO]",
+          "raw_label": "ZnO",
+          "source_line_number": 128,
+          "source_line": "s 125   1.00   STRE    2    7   ZnO    1.163956"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "combined:k:126",
+      "combined_coordinate_uid": "combined:k:126",
+      "is_combined_coordinate": true,
+      "component_count": 2,
+      "component_uids": "coord:k:126:STRE:2-8:L417:57188263af | coord:k:126:BEND:8-9-6:L428:cc211e7317",
+      "component_groups": "STRE | BEND",
+      "component_atoms": "2 8 | 8 9 6",
+      "component_atom_labels": "Zn2-O8 | O8-C9-C6",
+      "component_labels": "str(Zn2-O8)[ZnO] | bend(O8-C9-C6)[OCC]",
+      "component_raw_labels": "ZnO | OCC",
+      "coord_id": 126,
+      "coord_code": "k",
+      "coord_group": "STRE+BEND",
+      "atoms": "2 8 | 8 9 6",
+      "atom_label": "Zn2-O8 | O8-C9-C6",
+      "label": "combined coordinate [str(Zn2-O8)[ZnO]; bend(O8-C9-C6)[OCC]]",
+      "raw_label": "ZnO | OCC",
+      "selected_component_uid": "coord:k:126:STRE:2-8:L417:57188263af",
+      "selected_component_uids": [
+        "coord:k:126:STRE:2-8:L417:57188263af"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "2 8",
+      "selected_component_atom_label": "Zn2-O8",
+      "selected_component_label": "str(Zn2-O8)[ZnO]",
+      "selected_component_raw_label": "ZnO",
+      "selected_component_uids_text": "coord:k:126:STRE:2-8:L417:57188263af",
+      "selected_component_atoms_all": "2 8",
+      "selected_component_atom_labels_all": "Zn2-O8",
+      "selected_component_labels_all": "str(Zn2-O8)[ZnO]",
+      "selected_component_raw_labels_all": "ZnO",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:k:126:STRE:2-8:L417:57188263af",
+          "coord_code": "k",
+          "coord_id": 126,
+          "coord_group": "STRE",
+          "atoms": [
+            2,
+            8
+          ],
+          "atom_label": "Zn2-O8",
+          "label": "str(Zn2-O8)[ZnO]",
+          "raw_label": "ZnO",
+          "source_line_number": 417,
+          "source_line": "k 126   1.00   STRE    2    8   ZnO    1.165322"
+        }
+      ],
+      "source_line_number": 417,
+      "source_line": "k 126   1.00   STRE    2    8   ZnO    1.165322",
+      "components": [
+        {
+          "coordinate_uid": "coord:k:126:STRE:2-8:L417:57188263af",
+          "coord_code": "k",
+          "coord_id": 126,
+          "coord_group": "STRE",
+          "atoms": [
+            2,
+            8
+          ],
+          "atom_label": "Zn2-O8",
+          "label": "str(Zn2-O8)[ZnO]",
+          "raw_label": "ZnO",
+          "source_line_number": 417,
+          "source_line": "k 126   1.00   STRE    2    8   ZnO    1.165322"
+        },
+        {
+          "coordinate_uid": "coord:k:126:BEND:8-9-6:L428:cc211e7317",
+          "coord_code": "k",
+          "coord_id": 126,
+          "coord_group": "BEND",
+          "atoms": [
+            8,
+            9,
+            6
+          ],
+          "atom_label": "O8-C9-C6",
+          "label": "bend(O8-C9-C6)[OCC]",
+          "raw_label": "OCC",
+          "source_line_number": 428,
+          "source_line": "k 126   1.00   BEND    8    9    6   OCC   115.63"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "combined:k:127",
+      "combined_coordinate_uid": "combined:k:127",
+      "is_combined_coordinate": true,
+      "component_count": 2,
+      "component_uids": "coord:k:127:STRE:1-12:L418:bc84ec0fb4 | coord:k:127:BEND:12-11-4:L429:a77b120c0f",
+      "component_groups": "STRE | BEND",
+      "component_atoms": "1 12 | 12 11 4",
+      "component_atom_labels": "Co1-O12 | O12-C11-C4",
+      "component_labels": "str(Co1-O12)[CoO] | bend(O12-C11-C4)[OCC]",
+      "component_raw_labels": "CoO | OCC",
+      "coord_id": 127,
+      "coord_code": "k",
+      "coord_group": "STRE+BEND",
+      "atoms": "1 12 | 12 11 4",
+      "atom_label": "Co1-O12 | O12-C11-C4",
+      "label": "combined coordinate [str(Co1-O12)[CoO]; bend(O12-C11-C4)[OCC]]",
+      "raw_label": "CoO | OCC",
+      "selected_component_uid": "coord:k:127:STRE:1-12:L418:bc84ec0fb4",
+      "selected_component_uids": [
+        "coord:k:127:STRE:1-12:L418:bc84ec0fb4"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "1 12",
+      "selected_component_atom_label": "Co1-O12",
+      "selected_component_label": "str(Co1-O12)[CoO]",
+      "selected_component_raw_label": "CoO",
+      "selected_component_uids_text": "coord:k:127:STRE:1-12:L418:bc84ec0fb4",
+      "selected_component_atoms_all": "1 12",
+      "selected_component_atom_labels_all": "Co1-O12",
+      "selected_component_labels_all": "str(Co1-O12)[CoO]",
+      "selected_component_raw_labels_all": "CoO",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:k:127:STRE:1-12:L418:bc84ec0fb4",
+          "coord_code": "k",
+          "coord_id": 127,
+          "coord_group": "STRE",
+          "atoms": [
+            1,
+            12
+          ],
+          "atom_label": "Co1-O12",
+          "label": "str(Co1-O12)[CoO]",
+          "raw_label": "CoO",
+          "source_line_number": 418,
+          "source_line": "k 127   1.00   STRE    1   12   CoO    1.005170"
+        }
+      ],
+      "source_line_number": 418,
+      "source_line": "k 127   1.00   STRE    1   12   CoO    1.005170",
+      "components": [
+        {
+          "coordinate_uid": "coord:k:127:STRE:1-12:L418:bc84ec0fb4",
+          "coord_code": "k",
+          "coord_id": 127,
+          "coord_group": "STRE",
+          "atoms": [
+            1,
+            12
+          ],
+          "atom_label": "Co1-O12",
+          "label": "str(Co1-O12)[CoO]",
+          "raw_label": "CoO",
+          "source_line_number": 418,
+          "source_line": "k 127   1.00   STRE    1   12   CoO    1.005170"
+        },
+        {
+          "coordinate_uid": "coord:k:127:BEND:12-11-4:L429:a77b120c0f",
+          "coord_code": "k",
+          "coord_id": 127,
+          "coord_group": "BEND",
+          "atoms": [
+            12,
+            11,
+            4
+          ],
+          "atom_label": "O12-C11-C4",
+          "label": "bend(O12-C11-C4)[OCC]",
+          "raw_label": "OCC",
+          "source_line_number": 429,
+          "source_line": "k 127   1.00   BEND   12   11    4   OCC   113.83"
+        }
+      ]
+    },
+    {
+      "coordinate_uid": "coord:k:128:STRE:9-6:L419:af76c01609",
+      "combined_coordinate_uid": "combined:k:128",
+      "is_combined_coordinate": false,
+      "component_count": 1,
+      "component_uids": "coord:k:128:STRE:9-6:L419:af76c01609",
+      "component_groups": "STRE",
+      "component_atoms": "9 6",
+      "component_atom_labels": "C9-C6",
+      "component_labels": "str(C9-C6)[CC]",
+      "component_raw_labels": "CC",
+      "coord_id": 128,
+      "coord_code": "k",
+      "coord_group": "STRE",
+      "atoms": "9 6",
+      "atom_label": "C9-C6",
+      "label": "str(C9-C6)[CC]",
+      "raw_label": "CC",
+      "selected_component_uid": "coord:k:128:STRE:9-6:L419:af76c01609",
+      "selected_component_uids": [
+        "coord:k:128:STRE:9-6:L419:af76c01609"
+      ],
+      "selected_component_group": "STRE",
+      "selected_component_atoms": "9 6",
+      "selected_component_atom_label": "C9-C6",
+      "selected_component_label": "str(C9-C6)[CC]",
+      "selected_component_raw_label": "CC",
+      "selected_component_uids_text": "coord:k:128:STRE:9-6:L419:af76c01609",
+      "selected_component_atoms_all": "9 6",
+      "selected_component_atom_labels_all": "C9-C6",
+      "selected_component_labels_all": "str(C9-C6)[CC]",
+      "selected_component_raw_labels_all": "CC",
+      "selected_components": [
+        {
+          "coordinate_uid": "coord:k:128:STRE:9-6:L419:af76c01609",
+          "coord_code": "k",
+          "coord_id": 128,
+          "coord_group": "STRE",
+          "atoms": [
+            9,
+            6
+          ],
+          "atom_label": "C9-C6",
+          "label": "str(C9-C6)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 419,
+          "source_line": "k 128   1.00   STRE    9    6   CC    0.817055"
+        }
+      ],
+      "source_line_number": 419,
+      "source_line": "k 128   1.00   STRE    9    6   CC    0.817055",
+      "components": [
+        {
+          "coordinate_uid": "coord:k:128:STRE:9-6:L419:af76c01609",
+          "coord_code": "k",
+          "coord_id": 128,
+          "coord_group": "STRE",
+          "atoms": [
+            9,
+            6
+          ],
+          "atom_label": "C9-C6",
+          "label": "str(C9-C6)[CC]",
+          "raw_label": "CC",
+          "source_line_number": 419,
+          "source_line": "k 128   1.00   STRE    9    6   CC    0.817055"
+        }
+      ]
+    }
+  ]
+}

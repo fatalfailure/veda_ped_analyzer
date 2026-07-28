@@ -1,3 +1,23 @@
+# Changelog
+
+## v1.1.10 - Stable coordinate UIDs and combination-coordinate handling
+
+### Fixed
+- Replaced target matching based on `code + coord_id` with stable `coordinate_uid` matching.
+- Added row-specific coordinate identity using code, coordinate number, group, atoms, and source-row identity.
+- Prevented DD2 rows with the same `code + coord_id` from overwriting one another.
+- When one VEDA coordinate number represents multiple DD2 components, the PED value is now reported as a combined coordinate rather than as the PED of one selected component.
+
+### Added
+- Added `coordinate_uid`, `combined_coordinate_uid`, `atoms`, component metadata, and selected-component metadata to target outputs.
+- Added GUI and precheck warnings for repeated `code + coord_id` component rows.
+- Saved complete target records, including atoms, atom labels, labels, raw labels, and selected component UIDs, in the configuration JSON.
+- Added `requested_coordinate_uids`, `found_coordinate_uids`, and `missing_coordinate_uids` to combined summaries.
+- Target-matrix PED columns now use `PED::<coordinate_uid>` rather than opaque hash-based names.
+
+### Compatibility
+- Legacy numeric and `code:group:coord_id` target references can be resolved after precheck, but all new selections and aggregation use `coordinate_uid`.
+
 ## v1.1.9 - Coordinate Browser filter help
 
 ### Changed
@@ -7,9 +27,7 @@
 - Added bond/pair notation support in Atom filter: `3-12`, `3–12`, and `3－12` match coordinates containing both atoms.
 - Preserved comma-separated atom filtering as OR semantics, e.g. `3,12` matches coordinates containing either atom.
 
-# Changelog
-
-## v1.1.9 - Group-qualified target references
+## v1.1.8 - Group-qualified target references
 
 ### Fixed
 - Fixed target-coordinate selection when VEDA/DD2 reuses the same coordinate-set code and numeric `coord_id` for different groups such as `STRE` and `BEND`.
