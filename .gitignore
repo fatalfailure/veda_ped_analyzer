@@ -1,0 +1,24 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Runtime logs and user-local settings
+*.log
+veda_ped_analyzer.json
+veda_ped_analyzer_target_tracking.json
+
+# Generated analysis outputs
+*_PED_table_*.csv
+*_PED_terms_long_*.csv
+*_target_hits_*.csv
+*_target_summary_by_mode_*.csv
+*_target_summary_by_coord_*.csv
+*_target_matrix_*.csv
+*_coordinates_lookup.csv
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
